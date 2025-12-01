@@ -2,24 +2,38 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+<!-- Prevent zooming on inputs and handle safe areas for iPhone Notch -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>MyCloudText — Secure</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  /* Native App Feel */
+  body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+  
+  /* Smooth Slide Transitions for Mobile */
+  .view-container { transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
+  .view-active { transform: translateX(0); }
+  .view-hidden-right { transform: translateX(100%); }
+  .view-hidden-left { transform: translateX(-30%); } /* Parallax effect */
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
   .dark ::-webkit-scrollbar-thumb { background: #475569; }
-  .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
-  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-  .break-anywhere { overflow-wrap: anywhere; word-break: break-all; }
+
+  /* Utility */
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .loader { width: 18px; height: 18px; border: 2px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  
+  [x-cloak] { display: none !important; }
 </style>
 </head>
-<body class="bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100 h-screen flex flex-col overflow-hidden">
+<body class="bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 h-[100dvh] w-screen overflow-hidden flex flex-col transition-colors duration-200">
 
 <!-- ================================================================= -->
-<!-- SECURITY CONFIGURATION (YOUR KEYS ARE NOW SET)                    -->
+<!-- CONFIGURATION (Pre-filled with your keys)                         -->
 <!-- ================================================================= -->
 <script>
   const CONFIG = {
@@ -31,101 +45,150 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2nqjQh7Fx63wGaothYXH54+dM7fv/iZAMO5h
     PRIVATE_KEY_IV: "GhU37eqb7/9qD2xk"
   };
 </script>
-<!-- ================================================================= -->
-
-<!-- SETUP WIZARD (HIDDEN NOW) -->
-<div id="setup-screen" class="fixed inset-0 z-[60] bg-gray-900 text-white flex flex-col items-center justify-center p-6 overflow-y-auto hidden">
-  <!-- Code omitted for cleanliness since config is present -->
-</div>
 
 <!-- TOAST CONTAINER -->
-<div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+<div id="toast-container" class="fixed top-14 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-max max-w-[90vw] pointer-events-none"></div>
 
 <!-- ADMIN LOGIN MODAL -->
-<div id="login-modal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center hidden">
-  <div class="bg-white dark:bg-gray-800 w-full max-w-sm p-6 rounded-2xl shadow-2xl">
-    <div class="flex justify-between items-center mb-4">
-      <h2 class="text-xl font-bold">Admin Decryption</h2>
-      <button onclick="closeLogin()" class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+<div id="login-modal" class="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center hidden opacity-0 transition-opacity duration-300">
+  <div class="bg-white dark:bg-gray-900 w-full sm:max-w-sm p-6 rounded-t-2xl sm:rounded-2xl shadow-2xl transform transition-transform duration-300 translate-y-full sm:translate-y-0">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-xl font-bold flex items-center gap-2"><i class="fa-solid fa-user-shield text-blue-500"></i> Admin Access</h2>
+      <button onclick="closeLogin()" class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500"><i class="fa-solid fa-xmark"></i></button>
     </div>
-    <p class="text-sm text-gray-500 mb-4">Enter password to unlock your Private Key.</p>
-    <input type="password" id="admin-password" placeholder="Password" 
-      class="w-full p-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 outline-none"
-      onkeyup="if(event.key==='Enter') attemptAdminLogin()">
-    <button onclick="attemptAdminLogin()" id="unlock-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-colors">
-      Unlock Vault
-    </button>
+    <div class="space-y-4">
+      <input type="password" id="admin-password" placeholder="Master Password" 
+        class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-lg"
+        onkeyup="if(event.key==='Enter') attemptAdminLogin()">
+      <button onclick="attemptAdminLogin()" id="unlock-btn" class="w-full bg-blue-600 active:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-500/30 transition-all flex justify-center items-center gap-2">
+        Unlock Vault
+      </button>
+    </div>
+    <div class="mt-6 text-center text-xs text-gray-400">
+      Guests can write. Only you can read.
+    </div>
   </div>
 </div>
 
-<!-- MAIN APP UI -->
-<header class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 shrink-0 shadow-sm z-20">
-  <div class="font-bold text-lg tracking-tight flex items-center gap-2">
-    <i class="fa-solid fa-user-secret text-blue-500"></i> <span class="hidden md:inline">MyCloudText</span>
-    <span id="mode-badge" class="bg-gray-200 dark:bg-gray-700 text-xs px-2 py-1 rounded-full text-gray-500">Guest (Write Only)</span>
-  </div>
-  <div class="flex items-center gap-3">
-    <button onclick="openLogin()" id="lock-btn" class="p-2 text-gray-400 hover:text-blue-600 transition-colors" title="Admin Login">
-      <i class="fa-solid fa-lock"></i>
-    </button>
-    <button onclick="toggleTheme()" class="p-2 text-gray-400 hover:text-yellow-500 transition-colors">
-      <i class="fa-solid fa-circle-half-stroke"></i>
-    </button>
-  </div>
-</header>
+<!-- ======================= APP LAYOUT ======================= -->
+<div class="relative w-full h-full overflow-hidden bg-white dark:bg-gray-950">
+  
+  <!-- VIEW 1: LIST / HOME (Sidebar on Desktop, Main View on Mobile) -->
+  <aside id="view-list" class="absolute inset-0 md:w-80 md:border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 z-10 flex flex-col view-container view-active">
+    
+    <!-- Header -->
+    <header class="h-16 flex items-center justify-between px-5 border-b border-gray-100 dark:border-gray-800 shrink-0">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+          <i class="fa-solid fa-cloud"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight tracking-tight">MyCloudText</h1>
+          <div id="mode-badge" class="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Guest Mode</div>
+        </div>
+      </div>
+      <div class="flex gap-1">
+        <button onclick="openLogin()" id="lock-btn" class="w-10 h-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 flex items-center justify-center text-gray-400 transition-colors">
+          <i class="fa-solid fa-lock"></i>
+        </button>
+        <button onclick="toggleTheme()" class="w-10 h-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 flex items-center justify-center text-gray-400 transition-colors">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+      </div>
+    </header>
 
-<div class="flex-1 flex overflow-hidden relative">
-  <!-- SIDEBAR -->
-  <aside id="sidebar" class="w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex-col z-10 hidden md:flex">
-    <div class="p-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
-      <span class="text-xs font-bold text-gray-400 uppercase">Saved Notes</span>
-      <button onclick="refreshNotes()" class="text-gray-400 hover:text-blue-500"><i class="fa-solid fa-rotate-right"></i></button>
-    </div>
-    <div id="note-list" class="flex-1 overflow-y-auto p-2 space-y-1">
-      <div class="text-center mt-10 text-gray-400 text-sm p-4">
-        <i class="fa-solid fa-eye-slash text-2xl mb-2"></i><br>
-        Notes are encrypted.<br>Login to decrypt & read.
+    <!-- Scrollable List -->
+    <div id="note-list" class="flex-1 overflow-y-auto overflow-x-hidden pb-20">
+      <!-- Empty State -->
+      <div class="flex flex-col items-center justify-center h-64 text-center px-6">
+        <div class="w-16 h-16 bg-gray-100 dark:bg-gray-900 rounded-full flex items-center justify-center text-gray-300 mb-4 text-2xl">
+          <i class="fa-solid fa-eye-slash"></i>
+        </div>
+        <h3 class="font-medium text-gray-900 dark:text-gray-100">Encrypted Storage</h3>
+        <p class="text-sm text-gray-400 mt-1 max-w-[200px]">Notes you write are encrypted. Log in to decrypt and read them.</p>
       </div>
     </div>
+
+    <!-- Mobile FAB (Floating Action Button) -->
+    <button onclick="createNewNote()" class="md:hidden absolute bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl shadow-blue-600/30 flex items-center justify-center text-2xl active:scale-95 transition-transform z-20">
+      <i class="fa-solid fa-plus"></i>
+    </button>
   </aside>
 
-  <!-- EDITOR -->
-  <main class="flex-1 bg-gray-50 dark:bg-gray-900 flex flex-col relative">
-    <div class="h-14 bg-white/50 dark:bg-gray-800/50 backdrop-blur border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 shrink-0">
-      <div class="text-xs text-gray-400 font-medium uppercase tracking-wide" id="status-text">New Encrypted Note</div>
+  <!-- VIEW 2: EDITOR (Main Content) -->
+  <main id="view-editor" class="absolute inset-0 md:static md:flex-1 md:translate-x-0 bg-gray-50 dark:bg-gray-900 z-20 flex flex-col view-container view-hidden-right">
+    
+    <!-- Editor Header -->
+    <div class="h-16 px-4 flex items-center justify-between border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shrink-0">
+      <div class="flex items-center gap-2">
+        <button onclick="goBack()" class="md:hidden -ml-2 w-10 h-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center text-gray-500">
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
+        <span id="status-text" class="text-xs font-bold text-gray-400 uppercase tracking-wider">New Note</span>
+      </div>
+      
       <div class="flex items-center gap-2">
         <input type="file" id="file-input" multiple class="hidden" onchange="handleFileSelect(this)">
-        <button onclick="document.getElementById('file-input').click()" class="text-gray-500 hover:text-blue-600 p-2 rounded-md transition-colors" title="Attach File">
+        <button onclick="document.getElementById('file-input').click()" class="w-10 h-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 relative">
           <i class="fa-solid fa-paperclip"></i>
+          <span id="file-badge" class="hidden absolute top-2 right-2 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white dark:border-gray-900"></span>
         </button>
-        <button onclick="saveNote()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-1.5 rounded shadow-sm hover:shadow transition-all flex items-center gap-2">
-          <span>Save Securely</span>
-          <i class="fa-solid fa-lock text-xs"></i>
+        
+        <button onclick="saveNote()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-full shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2 text-sm">
+          <span>Save</span>
+          <i class="fa-solid fa-check"></i>
         </button>
-        <button id="delete-btn" onclick="deleteNote()" class="hidden text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-2 rounded ml-1">
+        
+        <button id="delete-btn" onclick="deleteNote()" class="hidden w-10 h-10 rounded-full text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center justify-center transition-colors">
           <i class="fa-regular fa-trash-can"></i>
         </button>
       </div>
     </div>
 
-    <div class="flex-1 overflow-y-auto p-4 md:p-8">
-      <div class="max-w-3xl mx-auto h-full flex flex-col">
-        <input id="note-title" type="text" placeholder="Note Title" 
-          class="bg-transparent text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 border-none focus:ring-0 p-0 mb-4 w-full outline-none">
-        <textarea id="note-body" placeholder="Write something confidential..." 
-          class="flex-1 bg-transparent resize-none text-gray-600 dark:text-gray-300 text-lg leading-relaxed border-none focus:ring-0 p-0 w-full outline-none"></textarea>
-        <div id="attachments-area" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 min-h-[60px]">
-          <div id="file-list" class="flex flex-wrap gap-2"></div>
-        </div>
+    <!-- Scrollable Editor Area -->
+    <div class="flex-1 overflow-y-auto">
+      <div class="max-w-3xl mx-auto p-5 pb-32 min-h-full flex flex-col">
+        <input id="note-title" type="text" placeholder="Title" 
+          class="bg-transparent text-3xl font-bold text-gray-900 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-700 border-none focus:ring-0 p-0 mb-6 w-full outline-none">
+        
+        <textarea id="note-body" placeholder="Start typing securely..." 
+          class="flex-1 bg-transparent resize-none text-lg leading-relaxed text-gray-700 dark:text-gray-300 border-none focus:ring-0 p-0 w-full outline-none placeholder-gray-300 dark:placeholder-gray-700"></textarea>
+        
+        <!-- Attachments Preview -->
+        <div id="file-list" class="flex flex-wrap gap-2 mt-8 empty:hidden"></div>
       </div>
     </div>
   </main>
+
 </div>
 
-<!-- ================================================================= -->
-<!-- APPLICATION LOGIC                                                 -->
-<!-- ================================================================= -->
+<!-- ======================= LOGIC ======================= -->
 <script>
+/* --- MOBILE NAVIGATION --- */
+function isMobile() { return window.innerWidth < 768; }
+
+function goBack() {
+  if (!isMobile()) return;
+  document.getElementById('view-editor').classList.add('view-hidden-right');
+  document.getElementById('view-editor').classList.remove('view-active');
+  document.getElementById('view-list').classList.remove('view-hidden-left');
+  
+  // Clear selection if we are just a guest going back
+  if (!STATE.isAdmin) setTimeout(() => resetEditor(), 300);
+}
+
+function openEditor() {
+  document.getElementById('view-editor').classList.remove('view-hidden-right');
+  document.getElementById('view-editor').classList.add('view-active');
+  if (isMobile()) document.getElementById('view-list').classList.add('view-hidden-left');
+}
+
+function createNewNote() {
+  resetEditor();
+  openEditor();
+  setTimeout(() => document.getElementById('note-title').focus(), 100);
+}
+
 /* --- STATE --- */
 const STATE = {
   isAdmin: false,
@@ -135,104 +198,97 @@ const STATE = {
   pendingFiles: []
 };
 
-/* --- CRYPTO HELPERS --- */
+/* --- CRYPTO ENGINE --- */
 const enc = new TextEncoder();
 const dec = new TextDecoder();
+const bufToB64 = b => btoa(String.fromCharCode(...new Uint8Array(b)));
+const b64ToBuf = b => Uint8Array.from(atob(b), c => c.charCodeAt(0));
 
-function bufToB64(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))); }
-function b64ToBuf(b64) { return Uint8Array.from(atob(b64), c => c.charCodeAt(0)); }
-
-async function generateAesKey() {
-  return crypto.subtle.generateKey({name: "AES-GCM", length: 256}, true, ["encrypt", "decrypt"]);
-}
-
+async function generateAesKey() { return crypto.subtle.generateKey({name: "AES-GCM", length: 256}, true, ["encrypt", "decrypt"]); }
 async function aesEncrypt(data, key) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const buf = typeof data === 'string' ? enc.encode(data) : data;
   const ct = await crypto.subtle.encrypt({name: "AES-GCM", iv}, key, buf);
   return { iv: bufToB64(iv), data: bufToB64(ct) };
 }
-
 async function aesDecrypt(b64Data, b64Iv, key, isText=true) {
-  const iv = b64ToBuf(b64Iv);
-  const ct = b64ToBuf(b64Data);
+  const iv = b64ToBuf(b64Iv); const ct = b64ToBuf(b64Data);
   const pt = await crypto.subtle.decrypt({name: "AES-GCM", iv}, key, ct);
   return isText ? dec.decode(pt) : pt;
 }
-
 async function importPublicKey(pem) {
   const b64 = pem.replace(/-----(BEGIN|END) PUBLIC KEY-----|\n/g, "");
-  return crypto.subtle.importKey(
-    "spki", b64ToBuf(b64), 
-    {name: "RSA-OAEP", hash: "SHA-256"}, false, ["encrypt"]
-  );
+  return crypto.subtle.importKey("spki", b64ToBuf(b64), {name: "RSA-OAEP", hash: "SHA-256"}, false, ["encrypt"]);
 }
-
 async function wrapKeyWithRsa(aesKey, pubKey) {
   const rawKey = await crypto.subtle.exportKey("raw", aesKey);
   const wrapped = await crypto.subtle.encrypt({name: "RSA-OAEP"}, pubKey, rawKey);
   return bufToB64(wrapped);
 }
-
 async function unwrapKeyWithRsa(b64Wrapped, privKey) {
   const wrapped = b64ToBuf(b64Wrapped);
   const rawKey = await crypto.subtle.decrypt({name: "RSA-OAEP"}, privKey, wrapped);
   return crypto.subtle.importKey("raw", rawKey, "AES-GCM", true, ["encrypt", "decrypt"]);
 }
 
-/* --- ADMIN LOGIN LOGIC --- */
-function openLogin() { document.getElementById('login-modal').classList.remove('hidden'); document.getElementById('admin-password').focus(); }
-function closeLogin() { document.getElementById('login-modal').classList.add('hidden'); }
+/* --- AUTH --- */
+function openLogin() { 
+  const el = document.getElementById('login-modal');
+  el.classList.remove('hidden');
+  setTimeout(() => { el.classList.remove('opacity-0'); el.firstElementChild.classList.remove('translate-y-full'); }, 10);
+  document.getElementById('admin-password').focus();
+}
+function closeLogin() {
+  const el = document.getElementById('login-modal');
+  el.classList.add('opacity-0'); el.firstElementChild.classList.add('translate-y-full');
+  setTimeout(() => el.classList.add('hidden'), 300);
+}
 
 async function attemptAdminLogin() {
   const password = document.getElementById('admin-password').value;
   const btn = document.getElementById('unlock-btn');
-  btn.innerText = "Verifying...";
+  const originalText = btn.innerHTML;
+  btn.innerHTML = `<div class="loader"></div>`;
   
   try {
     const salt = b64ToBuf(CONFIG.PRIVATE_KEY_SALT);
     const iv = b64ToBuf(CONFIG.PRIVATE_KEY_IV);
     const pwKeyMat = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
-    const unwrapKey = await crypto.subtle.deriveKey(
-      {name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256"},
-      pwKeyMat, {name: "AES-GCM", length: 256}, false, ["decrypt"]
-    );
-
+    const unwrapKey = await crypto.subtle.deriveKey({name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256"}, pwKeyMat, {name: "AES-GCM", length: 256}, false, ["decrypt"]);
     const encPriv = b64ToBuf(CONFIG.ENCRYPTED_PRIVATE_KEY);
     const privRaw = await crypto.subtle.decrypt({name: "AES-GCM", iv}, unwrapKey, encPriv);
-    
-    STATE.privateKey = await crypto.subtle.importKey(
-      "pkcs8", privRaw, {name: "RSA-OAEP", hash: "SHA-256"}, false, ["decrypt"]
-    );
+    STATE.privateKey = await crypto.subtle.importKey("pkcs8", privRaw, {name: "RSA-OAEP", hash: "SHA-256"}, false, ["decrypt"]);
     
     STATE.isAdmin = true;
     closeLogin();
     enableAdminUI();
-    showToast("Admin Key Unlocked", "success");
-
+    showToast("🔓 Vault Unlocked", "success");
   } catch(e) {
-    console.error(e);
-    showToast("Wrong Password", "error");
+    showToast("Incorrect Password", "error");
     document.getElementById('admin-password').value = "";
-  } finally {
-    btn.innerText = "Unlock Vault";
+    btn.innerHTML = originalText;
   }
 }
 
 function enableAdminUI() {
-  document.getElementById('mode-badge').innerText = "Admin (Read/Write)";
-  document.getElementById('mode-badge').className = "bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full";
+  document.getElementById('mode-badge').innerText = "ADMIN ACCESS";
+  document.getElementById('mode-badge').className = "text-[10px] font-bold text-blue-500 tracking-wider";
   document.getElementById('lock-btn').classList.add('hidden');
   document.getElementById('delete-btn').classList.remove('hidden');
-  document.getElementById('sidebar').classList.remove('hidden');
+  
+  // Add "New" button to sidebar top for Desktop convenience
+  if(!isMobile()){
+     // Logic handled by FAB or header
+  }
   refreshNotes();
 }
 
-/* --- APP LOGIC --- */
+/* --- NOTES --- */
 async function saveNote() {
   const title = document.getElementById('note-title').value.trim() || "Untitled";
   const body = document.getElementById('note-body').value;
   
+  if(!body && STATE.pendingFiles.length === 0) return showToast("Note is empty", "error");
   showToast("Encrypting...", "info");
   
   try {
@@ -247,45 +303,29 @@ async function saveNote() {
       filesToUpload.push({ filename: pf.filename, data: encF.data, iv: encF.iv });
     }
 
-    const packedData = JSON.stringify({
-      body: encBody.data, 
-      key: encSessionKey
-    });
-
+    const packedData = JSON.stringify({ body: encBody.data, key: encSessionKey });
     const reqBody = {
       id: STATE.currentNote ? STATE.currentNote.id : null,
-      title: title,
-      salt: "N/A", 
-      iv: encBody.iv, 
-      data: btoa(packedData), 
-      files: filesToUpload
+      title: title, salt: "N/A", iv: encBody.iv, data: btoa(packedData), files: filesToUpload
     };
 
-    const r = await fetch('/api/notes', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(reqBody)
-    });
-
+    const r = await fetch('/api/notes', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(reqBody) });
     if((await r.json()).ok) {
-      showToast("Saved! (Guest cannot read)", "success");
+      showToast("✅ Saved Securely", "success");
       if(STATE.isAdmin) refreshNotes();
-      else resetEditor();
+      else { resetEditor(); goBack(); }
     } else throw new Error("Server error");
-
-  } catch(e) {
-    console.error(e);
-    showToast("Save Failed", "error");
-  }
+  } catch(e) { showToast("Save Failed", "error"); }
 }
 
 async function loadNote(id) {
   if(!STATE.isAdmin) return;
   document.getElementById('status-text').innerText = "Decrypting...";
+  openEditor(); // Slide in view
   
   try {
     const r = await fetch(`/api/notes/${id}`);
     const note = await r.json();
-
     const packed = JSON.parse(atob(note.data));
     const sessionKey = await unwrapKeyWithRsa(packed.key, STATE.privateKey);
     const bodyStr = await aesDecrypt(packed.body, note.iv, sessionKey);
@@ -299,11 +339,10 @@ async function loadNote(id) {
     document.getElementById('note-title').value = note.title;
     document.getElementById('note-body').value = bodyObj.text || "";
     renderFiles();
-    document.getElementById('status-text').innerText = "Decrypted";
-
+    document.getElementById('status-text').innerText = "Last Saved: " + new Date(note.created_at).toLocaleTimeString();
   } catch(e) {
-    console.error(e);
     showToast("Decryption Failed", "error");
+    goBack();
   }
 }
 
@@ -311,27 +350,46 @@ async function refreshNotes() {
   const r = await fetch('/api/notes');
   const d = await r.json();
   const el = document.getElementById('note-list');
-  el.innerHTML = "";
-  (d.notes||[]).forEach(n => {
-    const div = document.createElement('div');
-    div.className = "p-3 border-b border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700";
-    div.innerHTML = `<div class="font-bold text-sm truncate dark:text-gray-200">${escapeHtml(n.title)}</div><div class="text-xs text-gray-400">${new Date(n.created_at).toLocaleDateString()}</div>`;
+  el.innerHTML = ""; // Clear
+  
+  if(!d.notes || d.notes.length === 0) {
+    el.innerHTML = `<div class="text-center mt-20 text-gray-400 text-sm">No notes found.</div>`;
+    return;
+  }
+
+  d.notes.forEach(n => {
+    const div = document.createElement('button');
+    div.className = "w-full text-left p-4 border-b border-gray-100 dark:border-gray-800 active:bg-gray-50 dark:active:bg-gray-900 transition-colors";
+    div.innerHTML = `
+      <div class="font-bold text-gray-800 dark:text-gray-100 truncate text-base mb-1">${escapeHtml(n.title||"Untitled")}</div>
+      <div class="flex items-center justify-between text-xs text-gray-400">
+        <span>${new Date(n.created_at).toLocaleDateString()}</span>
+        ${n.files && n.files.length ? '<i class="fa-solid fa-paperclip"></i>' : ''}
+      </div>
+    `;
     div.onclick = () => loadNote(n.id);
     el.appendChild(div);
   });
 }
 
+/* --- FILES --- */
 function renderFiles() {
   const el = document.getElementById('file-list'); el.innerHTML = "";
-  const chip = (n, s, pending, cb) => {
+  const allFiles = [...(STATE.currentNote?.files||[]).map(f=>({...f, remote:true})), ...STATE.pendingFiles.map(f=>({...f, remote:false}))];
+  
+  document.getElementById('file-badge').classList.toggle('hidden', allFiles.length === 0);
+
+  allFiles.forEach(f => {
     const d = document.createElement('div');
-    d.className = `flex items-center gap-2 px-3 py-1 text-xs rounded-full border ${pending?'bg-blue-50 text-blue-700':'bg-gray-100 dark:bg-gray-700 dark:text-gray-300'}`;
-    d.innerHTML = `<i class="fa-solid fa-file"></i> <span class="truncate max-w-[120px]">${escapeHtml(n)}</span>`;
-    if(cb) { const b = document.createElement('button'); b.innerHTML='<i class="fa-solid fa-download ml-1"></i>'; b.onclick=cb; d.appendChild(b); }
+    d.className = `inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border ${f.remote ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`;
+    d.innerHTML = `<i class="fa-solid ${f.remote ? 'fa-file' : 'fa-upload'}"></i> <span class="max-w-[150px] truncate">${escapeHtml(f.filename)}</span>`;
+    
+    if(f.remote && STATE.isAdmin) {
+      d.onclick = () => downloadFile(f);
+      d.classList.add('cursor-pointer', 'active:scale-95');
+    }
     el.appendChild(d);
-  };
-  (STATE.currentNote?.files||[]).forEach(f => chip(f.filename, f.size, false, () => downloadFile(f)));
-  STATE.pendingFiles.forEach(f => chip(f.filename, f.raw.byteLength, true));
+  });
 }
 
 function handleFileSelect(inp) {
@@ -345,6 +403,7 @@ function handleFileSelect(inp) {
 
 async function downloadFile(f) {
   try {
+    showToast("Decrypting...", "info");
     const buf = await aesDecrypt(f.data, f.iv, STATE.currentNote._sessionKey, false);
     const url = URL.createObjectURL(new Blob([buf]));
     const a = document.createElement('a'); a.href=url; a.download=f.filename; a.click();
@@ -356,7 +415,7 @@ async function deleteNote() {
   if(!STATE.isAdmin || !STATE.currentNote) return;
   if(confirm("Delete note?")) {
     await fetch(`/api/notes/${STATE.currentNote.id}`, {method:'DELETE'});
-    resetEditor(); refreshNotes();
+    resetEditor(); refreshNotes(); goBack(); showToast("Deleted", "info");
   }
 }
 
@@ -364,19 +423,25 @@ function resetEditor() {
   STATE.currentNote = null; STATE.pendingFiles = [];
   document.getElementById('note-title').value = "";
   document.getElementById('note-body').value = "";
+  document.getElementById('status-text').innerText = "New Note";
   renderFiles();
 }
 
+/* --- UTILS --- */
 function showToast(msg, type='info') {
   const d = document.createElement('div');
-  d.className = `${type==='error'?'bg-red-600':'bg-gray-800'} text-white px-4 py-3 rounded shadow`;
-  d.innerText = msg;
+  const bg = type==='error'?'bg-red-500':type==='success'?'bg-green-600':'bg-gray-800';
+  d.className = `${bg} text-white px-4 py-2.5 rounded-full shadow-lg text-sm font-medium flex items-center gap-2 animate-bounce-in`;
+  d.innerHTML = `<span>${msg}</span>`;
   document.getElementById('toast-container').appendChild(d);
-  setTimeout(()=>d.remove(), 3000);
+  setTimeout(()=>d.remove(), 2500);
 }
-
-function toggleTheme() { document.body.classList.toggle('dark'); }
+function toggleTheme() { document.documentElement.classList.toggle('dark'); }
 function escapeHtml(s) { return s?s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"):s; }
+
+// Init dark mode pref
+if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark');
+
 </script>
 </body>
 </html>
