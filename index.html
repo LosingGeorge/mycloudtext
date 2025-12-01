@@ -1,180 +1,620 @@
-const express = require("express");
-const path = require("path");
-const fs = require("fs");
-const cors = require("cors");
-const sqlite3 = require("sqlite3").verbose();
-
-// Configuration
-const DATA_DIR = path.join(__dirname, "data");
-const DB_PATH = path.join(DATA_DIR, "notes.db");
-const FILES_DIR = path.join(DATA_DIR, "files");
-const MAX_FILE_BYTES = 10 * 1024 * 1024; // Increased to 10 MB
-
-// Ensure directories exist
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
-if (!fs.existsSync(FILES_DIR)) fs.mkdirSync(FILES_DIR);
-
-// Initialize Database
-const db = new sqlite3.Database(DB_PATH);
-db.serialize(() => {
-  // We store files as a JSON string inside the text column for simplicity in this setup
-  db.run(`
-    CREATE TABLE IF NOT EXISTS notes (
-      id TEXT PRIMARY KEY,
-      title TEXT,
-      created_at TEXT,
-      salt TEXT,
-      iv TEXT,
-      data TEXT,
-      files TEXT
-    )
-  `);
-});
-
-const app = express();
-app.use(cors());
-// Increase payload limit to handle the Base64 encrypted files
-app.use(express.json({ limit: "50mb" })); 
-app.use(express.static(__dirname));
-
-// --- API ROUTES ---
-
-// 1. List Notes (Metadata only - lighter payload)
-app.get("/api/notes", (req, res) => {
-  db.all("SELECT id, title, created_at, salt, iv, files FROM notes ORDER BY created_at DESC", [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    
-    // Parse the files JSON string to return valid objects
-    const notes = rows.map(n => ({
-      ...n,
-      files: n.files ? JSON.parse(n.files) : []
-    }));
-    res.json({ notes });
-  });
-});
-
-// 2. Get Single Note (Includes heavy encrypted body)
-app.get("/api/notes/:id", (req, res) => {
-  db.get("SELECT * FROM notes WHERE id = ?", [req.params.id], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!row) return res.status(404).json({ error: "Note not found" });
-
-    const filesMeta = row.files ? JSON.parse(row.files) : [];
-    const responseFiles = [];
-
-    // Attach the actual Base64 file content from disk
-    for (const f of filesMeta) {
-      const filePath = path.join(FILES_DIR, f.path);
-      if (fs.existsSync(filePath)) {
-        try {
-          const buf = fs.readFileSync(filePath);
-          responseFiles.push({
-            filename: f.filename,
-            size: f.size,
-            data: buf.toString("base64"), // Encrypted blob
-            iv: f.iv
-          });
-        } catch (e) {
-          console.error(`Error reading file ${f.path}`, e);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+<title>MyCloudText — Secure</title>
+<!-- Tailwind CSS for instant modern styling -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 900: '#1e3a8a' }
         }
       }
     }
-
-    res.json({
-      ...row,
-      files: responseFiles // Send full file data to client
-    });
-  });
-});
-
-// 3. Create or Update Note
-app.post("/api/notes", (req, res) => {
-  const { id, title, salt, iv, data, files } = req.body;
-  
-  if (!title || !salt || !iv || !data) {
-    return res.status(400).json({ error: "Missing required fields" });
   }
+</script>
+<!-- Font Awesome for Icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-  // Generate ID if new
-  const noteId = id || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const createdAt = new Date().toISOString();
+<style>
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  .dark ::-webkit-scrollbar-thumb { background: #475569; }
+  
+  /* Mobile View Logic */
+  .view-transition { transition: transform 0.3s ease-in-out; }
+  
+  /* Loader */
+  .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-  // 1. Save new uploaded files to disk
-  const newFilesMeta = [];
-  if (Array.isArray(files)) {
-    for (const f of files) {
-      // Basic validation
-      if (!f.data || !f.filename) continue;
+  [x-cloak] { display: none !important; }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100 h-screen overflow-hidden flex flex-col transition-colors duration-200">
+
+<!-- TOAST NOTIFICATION CONTAINER -->
+<div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+<!-- LOGIN OVERLAY -->
+<div id="login-screen" class="fixed inset-0 z-50 bg-gray-100 dark:bg-gray-950 flex items-center justify-center p-4">
+  <div class="bg-white dark:bg-gray-900 w-full max-w-sm p-8 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 text-center">
+    <div class="mb-6 flex justify-center">
+      <div class="h-16 w-16 bg-brand-100 dark:bg-brand-900 rounded-full flex items-center justify-center text-brand-600 dark:text-brand-100 text-2xl">
+        <i class="fa-solid fa-shield-halved"></i>
+      </div>
+    </div>
+    <h1 class="text-2xl font-bold mb-2">Secure Notes</h1>
+    <p class="text-gray-500 dark:text-gray-400 text-sm mb-6">Enter your encryption password to decrypt your cloud vault.</p>
+    
+    <div class="relative mb-4">
+      <input type="password" id="password-input" 
+        class="w-full pl-4 pr-10 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none transition-all"
+        placeholder="Password"
+        onkeyup="if(event.key==='Enter') attemptLogin()"
+      >
+      <i class="fa-solid fa-lock absolute right-4 top-4 text-gray-400"></i>
+    </div>
+    
+    <button onclick="attemptLogin()" id="login-btn" class="w-full bg-brand-600 hover:bg-brand-500 text-white font-semibold py-3 rounded-lg shadow-md transition-all flex justify-center items-center gap-2">
+      <span>Unlock Vault</span>
+    </button>
+    
+    <button onclick="guestLogin()" class="mt-4 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline">
+      New user or Guest? (Create temporary keys)
+    </button>
+  </div>
+</div>
+
+<!-- APP LAYOUT -->
+<div class="flex-1 flex overflow-hidden relative" id="app-container">
+  
+  <!-- SIDEBAR (Note List) -->
+  <!-- On mobile: w-full. On desktop: w-80. Hidden on mobile if viewing note. -->
+  <aside id="sidebar" class="w-full md:w-80 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col z-20 absolute md:relative h-full transition-transform duration-300">
+    
+    <!-- Sidebar Header -->
+    <div class="h-16 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-4 shrink-0">
+      <div class="font-bold text-lg tracking-tight flex items-center gap-2">
+        <i class="fa-solid fa-cloud text-brand-500"></i> MyCloudText
+      </div>
+      <div class="flex gap-2">
+        <button onclick="toggleTheme()" class="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+          <i class="fa-solid fa-circle-half-stroke"></i>
+        </button>
+        <button onclick="createNote()" class="bg-brand-600 hover:bg-brand-500 text-white px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-all">
+          <i class="fa-solid fa-plus"></i> New
+        </button>
+      </div>
+    </div>
+
+    <!-- Note List -->
+    <div id="note-list" class="flex-1 overflow-y-auto p-2 space-y-1">
+      <!-- Notes injected here -->
+      <div class="text-center mt-10 text-gray-400 text-sm">Loading notes...</div>
+    </div>
+    
+    <!-- Sidebar Footer -->
+    <div class="p-3 border-t border-gray-200 dark:border-gray-800 text-xs text-center text-gray-400">
+      End-to-End Encrypted • <a href="#" onclick="logout()" class="text-red-400 hover:underline">Lock</a>
+    </div>
+  </aside>
+
+  <!-- MAIN EDITOR AREA -->
+  <!-- On mobile: fixed inset-0 z-30 (covers sidebar). Hidden by default on mobile until note selected. -->
+  <main id="editor-view" class="flex-1 bg-gray-50 dark:bg-gray-950 flex flex-col absolute inset-0 md:relative z-30 translate-x-full md:translate-x-0 transition-transform duration-300">
+    
+    <!-- Toolbar -->
+    <div class="h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-4 shrink-0 shadow-sm">
+      <div class="flex items-center gap-3">
+        <!-- Mobile Back Button -->
+        <button onclick="showSidebar()" class="md:hidden p-2 -ml-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full">
+          <i class="fa-solid fa-arrow-left"></i>
+        </button>
+        <div id="save-status" class="text-xs text-gray-400 font-medium uppercase tracking-wide">Ready</div>
+      </div>
       
-      const buf = Buffer.from(f.data, "base64");
-      if (buf.length > MAX_FILE_BYTES) {
-        return res.status(400).json({ error: `File ${f.filename} too large` });
+      <div class="flex items-center gap-2">
+        <input type="file" id="file-input" multiple class="hidden" onchange="handleFileSelect(this)">
+        <button onclick="document.getElementById('file-input').click()" class="text-gray-500 hover:text-brand-600 dark:hover:text-brand-400 p-2 rounded-md transition-colors" title="Attach File">
+          <i class="fa-solid fa-paperclip"></i>
+        </button>
+        <button onclick="saveNote()" class="text-brand-600 hover:text-brand-700 font-medium px-3 py-1.5 rounded hover:bg-brand-50 dark:hover:bg-gray-800 transition-colors">
+          Save
+        </button>
+        <button onclick="deleteNote()" class="text-red-500 hover:text-red-600 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete">
+          <i class="fa-regular fa-trash-can"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Editor Inputs -->
+    <div class="flex-1 overflow-y-auto p-4 md:p-8">
+      <div class="max-w-3xl mx-auto h-full flex flex-col">
+        <input id="note-title" type="text" placeholder="Note Title" 
+          class="bg-transparent text-3xl font-bold text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-700 border-none focus:ring-0 p-0 mb-4 w-full">
+        
+        <textarea id="note-body" placeholder="Start typing..." 
+          class="flex-1 bg-transparent resize-none text-gray-600 dark:text-gray-300 text-lg leading-relaxed border-none focus:ring-0 p-0 w-full outline-none"></textarea>
+        
+        <!-- Attachments Area -->
+        <div id="attachments-area" class="mt-8 pt-4 border-t border-gray-200 dark:border-gray-800">
+          <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Attachments</h4>
+          <div id="file-list" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<script>
+/* -------------------------------------------------------------------------- */
+/* CRYPTO ENGINE                                */
+/* -------------------------------------------------------------------------- */
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+async function deriveKey(password, saltB64) {
+  const salt = Uint8Array.from(atob(saltB64), c => c.charCodeAt(0));
+  const keyMat = await crypto.subtle.importKey("raw", enc.encode(password), {name:"PBKDF2"}, false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    keyMat, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+  );
+}
+
+// Encrypt string data
+async function encryptData(dataStr, key) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const buf = enc.encode(dataStr);
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, buf);
+  return { 
+    iv: btoa(String.fromCharCode(...iv)), 
+    data: btoa(String.fromCharCode(...new Uint8Array(ct))) 
+  };
+}
+
+// Decrypt string data
+async function decryptData(b64Data, b64Iv, key) {
+  const iv = Uint8Array.from(atob(b64Iv), c => c.charCodeAt(0));
+  const ct = Uint8Array.from(atob(b64Data), c => c.charCodeAt(0));
+  const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct);
+  return dec.decode(pt);
+}
+
+// Encrypt Binary (Files)
+async function encryptFile(arrayBuf, key) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, arrayBuf);
+  return { 
+    iv: btoa(String.fromCharCode(...iv)), 
+    data: btoa(String.fromCharCode(...new Uint8Array(ct))) 
+  };
+}
+
+// Decrypt Binary (Files)
+async function decryptFile(b64Data, b64Iv, key) {
+  const iv = Uint8Array.from(atob(b64Iv), c => c.charCodeAt(0));
+  const ct = Uint8Array.from(atob(b64Data), c => c.charCodeAt(0));
+  return crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct);
+}
+
+/* -------------------------------------------------------------------------- */
+/* APP STATE                                   */
+/* -------------------------------------------------------------------------- */
+const STATE = {
+  password: null,
+  notes: [],
+  currentNote: null,
+  pendingFiles: []
+};
+
+/* -------------------------------------------------------------------------- */
+/* LOGIN LOGIC                                 */
+/* -------------------------------------------------------------------------- */
+
+async function attemptLogin() {
+  const pw = document.getElementById('password-input').value;
+  const btn = document.getElementById('login-btn');
+  
+  if (!pw) return showToast('Please enter a password', 'error');
+
+  // UI Loading State
+  const originalText = btn.innerHTML;
+  btn.innerHTML = `<div class="loader mr-2"></div> Verifying...`;
+  btn.disabled = true;
+
+  try {
+    // 1. Fetch the notes list
+    const r = await fetch('/api/notes');
+    const d = await r.json();
+    const notes = d.notes || [];
+
+    // 2. Verification Step (The "Wrong Password" Logic)
+    if (notes.length > 0) {
+      // Pick the most recent note and try to decrypt it
+      // Note: We need to fetch the FULL note to get the 'data' field to test decryption
+      const latestNoteMeta = notes[0];
+      const r2 = await fetch(`/api/notes/${latestNoteMeta.id}`);
+      if (!r2.ok) throw new Error("Network error");
+      const fullNote = await r2.json();
+
+      // Attempt Decrypt
+      try {
+        const key = await deriveKey(pw, fullNote.salt);
+        await decryptData(fullNote.data, fullNote.iv, key);
+        // If we got here, password is CORRECT
+      } catch (e) {
+        // Decryption failed = Wrong Password
+        throw new Error("WRONG_PASSWORD");
       }
-
-      const safeName = `${noteId}-${Date.now()}-${f.filename.replace(/[^a-z0-9\.\-\_]/gi, '_')}`;
-      fs.writeFileSync(path.join(FILES_DIR, safeName), buf);
-
-      newFilesMeta.push({
-        filename: f.filename,
-        path: safeName,
-        size: buf.length,
-        iv: f.iv
-      });
     }
+
+    // 3. Success
+    STATE.password = pw;
+    STATE.notes = notes;
+    document.getElementById('login-screen').classList.add('hidden');
+    renderList();
+    
+    // On mobile, ensure we start on sidebar
+    showSidebar();
+
+  } catch (err) {
+    console.error(err);
+    if (err.message === "WRONG_PASSWORD") {
+      showToast("Incorrect Password. Decryption failed.", "error");
+      document.getElementById('password-input').value = "";
+      document.getElementById('password-input').focus();
+    } else {
+      showToast("Server connection failed.", "error");
+    }
+  } finally {
+    // Reset Button
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+  }
+}
+
+function guestLogin() {
+  if(!confirm("Guest Mode: Data saved now will be encrypted with a temporary password. If you refresh, you lose access unless you remember the random password generated.")) return;
+  STATE.password = "guest-" + Math.random().toString(36).substring(7);
+  alert("Your temporary password is: " + STATE.password);
+  document.getElementById('login-screen').classList.add('hidden');
+  refreshNotes();
+}
+
+function logout() {
+  location.reload();
+}
+
+/* -------------------------------------------------------------------------- */
+/* UI LOGIC                                    */
+/* -------------------------------------------------------------------------- */
+
+// Mobile View Switching
+function showSidebar() {
+  document.getElementById('editor-view').classList.remove('translate-x-0');
+  document.getElementById('editor-view').classList.add('translate-x-full'); // Push editor right
+  
+  // Highlight nothing
+  document.querySelectorAll('.note-item').forEach(el => el.classList.remove('bg-brand-50', 'dark:bg-brand-900/20', 'border-l-4', 'border-brand-500'));
+  STATE.currentNote = null;
+}
+
+function showEditor() {
+  document.getElementById('editor-view').classList.remove('translate-x-full');
+  document.getElementById('editor-view').classList.add('translate-x-0'); // Slide editor in
+}
+
+// Rendering
+function renderList() {
+  const el = document.getElementById('note-list');
+  el.innerHTML = "";
+  
+  if (STATE.notes.length === 0) {
+    el.innerHTML = `<div class="text-center mt-10 text-gray-400 p-4">
+      <i class="fa-regular fa-folder-open text-3xl mb-2"></i><br>No notes yet.<br>Click "New" to start.
+    </div>`;
+    return;
   }
 
-  // 2. Check if note exists to MERGE file lists (Fixes the overwrite bug)
-  db.get("SELECT files FROM notes WHERE id = ?", [noteId], (err, row) => {
-    let finalFileList = newFilesMeta;
-
-    if (row && row.files) {
-      // Note exists: Append new files to existing files
-      const existingFiles = JSON.parse(row.files);
-      finalFileList = [...existingFiles, ...newFilesMeta];
-    }
-
-    const filesJson = JSON.stringify(finalFileList);
-
-    // 3. Upsert (Insert or Replace) into SQLite
-    const stmt = db.prepare(`
-      INSERT INTO notes (id, title, created_at, salt, iv, data, files)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        title=excluded.title,
-        data=excluded.data,
-        iv=excluded.iv,
-        files=excluded.files
-    `);
-
-    stmt.run(noteId, title, createdAt, salt, iv, data, filesJson, function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ ok: true, id: noteId });
-    });
-    stmt.finalize();
+  STATE.notes.forEach(n => {
+    const div = document.createElement('div');
+    // Active state styling logic handled in loadNote
+    div.id = `note-${n.id}`;
+    div.className = "note-item p-3 border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group";
+    
+    const dateStr = new Date(n.created_at).toLocaleDateString(undefined, {month:'short', day:'numeric'});
+    const fileIcon = n.files && n.files.length ? `<i class="fa-solid fa-paperclip text-xs text-gray-400 ml-1"></i>` : '';
+    
+    div.innerHTML = `
+      <div class="flex justify-between items-start mb-1">
+        <h3 class="font-semibold text-gray-800 dark:text-gray-200 truncate pr-2 text-sm">${escapeHtml(n.title)}</h3>
+        <span class="text-[10px] text-gray-400 shrink-0 mt-0.5">${dateStr}</span>
+      </div>
+      <div class="text-xs text-gray-400 flex items-center">
+        Encrypted Text ${fileIcon}
+      </div>
+    `;
+    div.onclick = () => loadNote(n.id);
+    el.appendChild(div);
   });
-});
+}
 
-// 4. Delete Note
-app.delete("/api/notes/:id", (req, res) => {
-  const id = req.params.id;
+function createNote() {
+  STATE.currentNote = null;
+  STATE.pendingFiles = [];
+  document.getElementById('note-title').value = "";
+  document.getElementById('note-body').value = "";
+  document.getElementById('file-list').innerHTML = "";
   
-  // First get the file paths to clean up disk
-  db.get("SELECT files FROM notes WHERE id = ?", [id], (err, row) => {
-    if (row && row.files) {
-      const files = JSON.parse(row.files);
-      files.forEach(f => {
-        const fp = path.join(FILES_DIR, f.path);
-        if (fs.existsSync(fp)) fs.unlinkSync(fp);
-      });
+  // Switch to editor view
+  showEditor();
+  document.getElementById('note-title').focus();
+  document.getElementById('save-status').innerText = "New Unsaved Note";
+}
+
+async function loadNote(id) {
+  // UI Highlight
+  document.querySelectorAll('.note-item').forEach(el => 
+    el.className = "note-item p-3 border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+  );
+  const activeEl = document.getElementById(`note-${id}`);
+  if(activeEl) activeEl.className = "note-item p-3 border-b border-gray-100 dark:border-gray-800 cursor-pointer bg-brand-50 dark:bg-brand-900/20 border-l-4 border-brand-500 transition-colors";
+
+  showEditor();
+  document.getElementById('save-status').innerText = "Decrypting...";
+
+  try {
+    const r = await fetch(`/api/notes/${id}`);
+    const note = await r.json();
+
+    const key = await deriveKey(STATE.password, note.salt);
+    const bodyStr = await decryptData(note.data, note.iv, key);
+    const bodyObj = JSON.parse(bodyStr);
+
+    STATE.currentNote = note;
+    STATE.currentNote.files = note.files || [];
+    STATE.pendingFiles = [];
+
+    document.getElementById('note-title').value = note.title;
+    document.getElementById('note-body').value = bodyObj.text || "";
+    
+    renderFiles();
+    document.getElementById('save-status').innerText = "Last saved: " + new Date(note.created_at).toLocaleTimeString();
+
+  } catch (e) {
+    console.error(e);
+    showToast("Decryption Failed", "error");
+    document.getElementById('save-status').innerText = "Error";
+  }
+}
+
+// File Rendering
+function renderFiles() {
+  const el = document.getElementById('file-list');
+  el.innerHTML = "";
+
+  // Helper to make chips
+  const createChip = (name, size, isPending, onClick) => {
+    const div = document.createElement('div');
+    div.className = `flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${isPending ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-gray-100 border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'}`;
+    div.innerHTML = `
+      <i class="fa-solid ${isPending ? 'fa-upload' : 'fa-file'}"></i>
+      <span class="max-w-[150px] truncate">${escapeHtml(name)}</span>
+      <span class="opacity-60">(${formatBytes(size)})</span>
+    `;
+    if(!isPending) {
+      const btn = document.createElement('button');
+      btn.className = "ml-1 hover:text-brand-600";
+      btn.innerHTML = `<i class="fa-solid fa-download"></i>`;
+      btn.onclick = onClick;
+      div.appendChild(btn);
+    }
+    el.appendChild(div);
+  };
+
+  // 1. Server files
+  if (STATE.currentNote && STATE.currentNote.files) {
+    STATE.currentNote.files.forEach(f => {
+      createChip(f.filename, f.size, false, () => downloadFile(f));
+    });
+  }
+  // 2. Pending files
+  STATE.pendingFiles.forEach(f => {
+    createChip(f.filename, f.raw.byteLength, true, null);
+  });
+}
+
+function handleFileSelect(input) {
+  Array.from(input.files).forEach(async file => {
+    if(file.size > 10 * 1024 * 1024) return showToast(`${file.name} too large (Max 10MB)`, "error");
+    const buf = await file.arrayBuffer();
+    STATE.pendingFiles.push({ filename: file.name, raw: buf });
+    renderFiles();
+  });
+  input.value = "";
+}
+
+async function downloadFile(fMeta) {
+  const toastId = showToast("Decrypting download...", "info");
+  try {
+    const key = await deriveKey(STATE.password, STATE.currentNote.salt);
+    const decryptedBuf = await decryptFile(fMeta.data, fMeta.iv, key);
+    
+    const blob = new Blob([decryptedBuf]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fMeta.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    // Remove toast logic here would be complex, just let it fade
+  } catch(e) {
+    showToast("Download failed", "error");
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* SAVE / DELETE                               */
+/* -------------------------------------------------------------------------- */
+
+async function saveNote() {
+  const title = document.getElementById('note-title').value.trim();
+  const body = document.getElementById('note-body').value;
+  
+  if(!title) return showToast("Title is required", "error");
+
+  document.getElementById('save-status').innerText = "Encrypting...";
+
+  try {
+    // 1. Prepare Key
+    let saltB64;
+    if (STATE.currentNote) saltB64 = STATE.currentNote.salt;
+    else {
+      const s = crypto.getRandomValues(new Uint8Array(16));
+      saltB64 = btoa(String.fromCharCode(...s));
+    }
+    const key = await deriveKey(STATE.password, saltB64);
+
+    // 2. Encrypt Content
+    const contentPayload = JSON.stringify({ text: body });
+    const encContent = await encryptData(contentPayload, key);
+
+    // 3. Encrypt New Files
+    const filesToUpload = [];
+    for (const pf of STATE.pendingFiles) {
+      const encF = await encryptFile(pf.raw, key);
+      filesToUpload.push({ filename: pf.filename, data: encF.data, iv: encF.iv });
     }
 
-    // Now delete from DB
-    db.run("DELETE FROM notes WHERE id = ?", [id], function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ ok: true });
-    });
-  });
-});
+    // 4. Send
+    const reqBody = {
+      id: STATE.currentNote ? STATE.currentNote.id : null,
+      title: title,
+      salt: saltB64,
+      iv: encContent.iv,
+      data: encContent.data,
+      files: filesToUpload
+    };
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Secure Notes running on http://localhost:${port}`));
+    const r = await fetch('/api/notes', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(reqBody)
+    });
+    
+    const res = await r.json();
+    if(res.ok) {
+      showToast("Note Saved Securely", "success");
+      refreshNotes(); // Refresh list to update titles/timestamps
+      // If it was new, switch context to existing
+      if(!STATE.currentNote) {
+        await loadNote(res.id); // Reload to get server state
+      } else {
+        // Just clear pending files locally
+        STATE.pendingFiles = [];
+        renderFiles();
+        document.getElementById('save-status').innerText = "Saved";
+      }
+    } else {
+      throw new Error(res.error);
+    }
+  } catch(e) {
+    console.error(e);
+    showToast("Save Failed: " + e.message, "error");
+    document.getElementById('save-status').innerText = "Save Error";
+  }
+}
+
+async function deleteNote() {
+  if (!STATE.currentNote) return;
+  if (!confirm("Permanently delete this note? This cannot be undone.")) return;
+  
+  try {
+    await fetch(`/api/notes/${STATE.currentNote.id}`, {method:'DELETE'});
+    showToast("Note Deleted", "info");
+    createNote();
+    refreshNotes();
+    // On mobile go back
+    if(window.innerWidth < 768) showSidebar();
+  } catch(e) {
+    showToast("Delete Failed", "error");
+  }
+}
+
+async function refreshNotes() {
+  const r = await fetch('/api/notes');
+  const d = await r.json();
+  STATE.notes = d.notes || [];
+  renderList();
+}
+
+/* -------------------------------------------------------------------------- */
+/* UTILS                                       */
+/* -------------------------------------------------------------------------- */
+
+function toggleTheme() {
+  const body = document.body;
+  if (body.classList.contains('dark')) {
+    body.classList.remove('dark');
+    localStorage.setItem('theme', 'light');
+  } else {
+    body.classList.add('dark');
+    localStorage.setItem('theme', 'dark');
+  }
+}
+// Init theme
+if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark');
+
+function formatBytes(bytes, decimals = 1) {
+  if (!+bytes) return '0 B';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}
+
+function escapeHtml(text) {
+  if (!text) return text;
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function showToast(msg, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  
+  const colors = {
+    info: 'bg-gray-800 text-white',
+    error: 'bg-red-600 text-white',
+    success: 'bg-green-600 text-white'
+  };
+  
+  el.className = `${colors[type]} px-4 py-3 rounded shadow-lg text-sm font-medium transition-all duration-300 transform translate-x-full pointer-events-auto flex items-center gap-2`;
+  el.innerHTML = `<span>${msg}</span>`;
+  
+  container.appendChild(el);
+  
+  // Animate in
+  setTimeout(() => el.classList.remove('translate-x-full'), 10);
+  
+  // Remove after 3s
+  setTimeout(() => {
+    el.classList.add('opacity-0', 'translate-y-2');
+    setTimeout(() => el.remove(), 300);
+  }, 3000);
+}
+</script>
+</body>
+</html>
+
