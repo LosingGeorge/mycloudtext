@@ -1,39 +1,46 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
 <meta charset="utf-8" />
-<!-- Prevent zooming on inputs and handle safe areas for iPhone Notch -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>MyCloudText — Secure</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-  /* Native App Feel */
-  body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+  /* --- BASE --- */
+  body { -webkit-tap-highlight-color: transparent; }
   
-  /* Smooth Slide Transitions for Mobile */
-  .view-container { transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
-  .view-active { transform: translateX(0); }
-  .view-hidden-right { transform: translateX(100%); }
-  .view-hidden-left { transform: translateX(-30%); } /* Parallax effect */
-
-  /* Custom Scrollbar */
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  /* --- SCROLLBARS --- */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
   .dark ::-webkit-scrollbar-thumb { background: #475569; }
 
-  /* Utility */
-  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
-  .loader { width: 18px; height: 18px; border: 2px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  /* --- MOBILE ANIMATIONS (Disabled on Desktop) --- */
+  @media (max-width: 767px) {
+    .view-panel {
+      position: absolute; inset: 0;
+      transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+      will-change: transform;
+    }
+    .view-left-active  { transform: translateX(0); z-index: 10; }
+    .view-left-hidden  { transform: translateX(-20%); opacity: 0.8; z-index: 0; }
+    
+    .view-right-active { transform: translateX(0); z-index: 20; }
+    .view-right-hidden { transform: translateX(100%); z-index: 20; }
+  }
+
+  /* --- UTILS --- */
+  .loader { width: 18px; height: 18px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   
   [x-cloak] { display: none !important; }
 </style>
 </head>
-<body class="bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 h-[100dvh] w-screen overflow-hidden flex flex-col transition-colors duration-200">
+<body class="bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 h-full w-full overflow-hidden flex flex-col md:flex-row transition-colors duration-200">
 
 <!-- ================================================================= -->
-<!-- CONFIGURATION (Pre-filled with your keys)                         -->
+<!-- CONFIGURATION (YOUR KEYS)                                         -->
 <!-- ================================================================= -->
 <script>
   const CONFIG = {
@@ -46,161 +53,168 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2nqjQh7Fx63wGaothYXH54+dM7fv/iZAMO5h
   };
 </script>
 
-<!-- TOAST CONTAINER -->
+<!-- TOASTS -->
 <div id="toast-container" class="fixed top-14 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-max max-w-[90vw] pointer-events-none"></div>
 
 <!-- ADMIN LOGIN MODAL -->
-<div id="login-modal" class="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center hidden opacity-0 transition-opacity duration-300">
-  <div class="bg-white dark:bg-gray-900 w-full sm:max-w-sm p-6 rounded-t-2xl sm:rounded-2xl shadow-2xl transform transition-transform duration-300 translate-y-full sm:translate-y-0">
+<div id="login-modal" class="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center hidden opacity-0 transition-opacity duration-300">
+  <div class="bg-white dark:bg-gray-900 w-full md:max-w-sm p-6 rounded-t-2xl md:rounded-2xl shadow-2xl transform transition-transform duration-300 translate-y-full md:translate-y-0">
     <div class="flex justify-between items-center mb-6">
-      <h2 class="text-xl font-bold flex items-center gap-2"><i class="fa-solid fa-user-shield text-blue-500"></i> Admin Access</h2>
-      <button onclick="closeLogin()" class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500"><i class="fa-solid fa-xmark"></i></button>
+      <h2 class="text-xl font-bold flex items-center gap-2"><i class="fa-solid fa-user-shield text-blue-500"></i> Admin Login</h2>
+      <button onclick="closeLogin()" class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div class="space-y-4">
       <input type="password" id="admin-password" placeholder="Master Password" 
         class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-lg"
         onkeyup="if(event.key==='Enter') attemptAdminLogin()">
-      <button onclick="attemptAdminLogin()" id="unlock-btn" class="w-full bg-blue-600 active:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-500/30 transition-all flex justify-center items-center gap-2">
+      <button onclick="attemptAdminLogin()" id="unlock-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-500/30 flex justify-center gap-2">
         Unlock Vault
       </button>
     </div>
-    <div class="mt-6 text-center text-xs text-gray-400">
-      Guests can write. Only you can read.
-    </div>
+    <p class="mt-4 text-center text-xs text-gray-400">Decrypts secure notes for reading.</p>
   </div>
 </div>
 
 <!-- ======================= APP LAYOUT ======================= -->
-<div class="relative w-full h-full overflow-hidden bg-white dark:bg-gray-950">
+
+<!-- LEFT PANEL: SIDEBAR (List) -->
+<!-- On Mobile: Full width, z-index 10. On Desktop: Fixed width (80) or 20rem, relative. -->
+<aside id="view-list" class="view-panel view-left-active md:relative md:w-80 md:flex md:flex-col md:border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 z-10">
   
-  <!-- VIEW 1: LIST / HOME (Sidebar on Desktop, Main View on Mobile) -->
-  <aside id="view-list" class="absolute inset-0 md:w-80 md:border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 z-10 flex flex-col view-container view-active">
-    
-    <!-- Header -->
-    <header class="h-16 flex items-center justify-between px-5 border-b border-gray-100 dark:border-gray-800 shrink-0">
-      <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
-          <i class="fa-solid fa-cloud"></i>
-        </div>
-        <div>
-          <h1 class="font-bold text-lg leading-tight tracking-tight">MyCloudText</h1>
-          <div id="mode-badge" class="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Guest Mode</div>
-        </div>
+  <!-- Header -->
+  <header class="h-16 flex items-center justify-between px-5 border-b border-gray-100 dark:border-gray-800 shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+        <i class="fa-solid fa-cloud"></i>
       </div>
-      <div class="flex gap-1">
-        <button onclick="openLogin()" id="lock-btn" class="w-10 h-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 flex items-center justify-center text-gray-400 transition-colors">
-          <i class="fa-solid fa-lock"></i>
-        </button>
-        <button onclick="toggleTheme()" class="w-10 h-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 flex items-center justify-center text-gray-400 transition-colors">
-          <i class="fa-solid fa-moon"></i>
-        </button>
-      </div>
-    </header>
-
-    <!-- Scrollable List -->
-    <div id="note-list" class="flex-1 overflow-y-auto overflow-x-hidden pb-20">
-      <!-- Empty State -->
-      <div class="flex flex-col items-center justify-center h-64 text-center px-6">
-        <div class="w-16 h-16 bg-gray-100 dark:bg-gray-900 rounded-full flex items-center justify-center text-gray-300 mb-4 text-2xl">
-          <i class="fa-solid fa-eye-slash"></i>
-        </div>
-        <h3 class="font-medium text-gray-900 dark:text-gray-100">Encrypted Storage</h3>
-        <p class="text-sm text-gray-400 mt-1 max-w-[200px]">Notes you write are encrypted. Log in to decrypt and read them.</p>
+      <div class="flex flex-col">
+        <h1 class="font-bold text-base leading-none">MyCloudText</h1>
+        <span id="mode-badge" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">Guest Mode</span>
       </div>
     </div>
+    <div class="flex gap-1">
+      <button onclick="openLogin()" id="lock-btn" class="w-9 h-9 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 flex items-center justify-center text-gray-400 transition-colors" title="Admin Login">
+        <i class="fa-solid fa-lock"></i>
+      </button>
+      <button onclick="toggleTheme()" class="w-9 h-9 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 flex items-center justify-center text-gray-400 transition-colors" title="Toggle Theme">
+        <i class="fa-solid fa-moon"></i>
+      </button>
+    </div>
+  </header>
 
-    <!-- Mobile FAB (Floating Action Button) -->
-    <button onclick="createNewNote()" class="md:hidden absolute bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl shadow-blue-600/30 flex items-center justify-center text-2xl active:scale-95 transition-transform z-20">
-      <i class="fa-solid fa-plus"></i>
+  <!-- Desktop "New Note" Button (Hidden on Mobile) -->
+  <div class="hidden md:block px-4 py-4">
+    <button onclick="createNewNote()" class="w-full bg-blue-50 dark:bg-gray-900 hover:bg-blue-100 dark:hover:bg-gray-800 text-blue-600 dark:text-blue-400 font-semibold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 border border-transparent hover:border-blue-200 dark:hover:border-gray-700">
+      <i class="fa-solid fa-plus"></i> New Secure Note
     </button>
-  </aside>
+  </div>
 
-  <!-- VIEW 2: EDITOR (Main Content) -->
-  <main id="view-editor" class="absolute inset-0 md:static md:flex-1 md:translate-x-0 bg-gray-50 dark:bg-gray-900 z-20 flex flex-col view-container view-hidden-right">
-    
-    <!-- Editor Header -->
-    <div class="h-16 px-4 flex items-center justify-between border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shrink-0">
-      <div class="flex items-center gap-2">
-        <button onclick="goBack()" class="md:hidden -ml-2 w-10 h-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center text-gray-500">
-          <i class="fa-solid fa-chevron-left"></i>
-        </button>
-        <span id="status-text" class="text-xs font-bold text-gray-400 uppercase tracking-wider">New Note</span>
-      </div>
+  <!-- Note List -->
+  <div id="note-list" class="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-1 pb-24 md:pb-2">
+    <!-- Empty State -->
+    <div class="flex flex-col items-center justify-center h-64 text-center px-6">
+      <i class="fa-solid fa-file-shield text-4xl text-gray-200 dark:text-gray-800 mb-4"></i>
+      <p class="text-sm text-gray-500">Secure Storage Active.<br>Login to view notes.</p>
+    </div>
+  </div>
+
+  <!-- Mobile FAB (Hidden on Desktop) -->
+  <button onclick="createNewNote()" class="md:hidden absolute bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl shadow-blue-600/40 flex items-center justify-center text-2xl active:scale-90 transition-transform z-30">
+    <i class="fa-solid fa-pen"></i>
+  </button>
+</aside>
+
+<!-- RIGHT PANEL: EDITOR -->
+<!-- On Mobile: Full width, z-index 20, slides in. On Desktop: Flex-1, always visible. -->
+<main id="view-editor" class="view-panel view-right-hidden md:transform-none md:static md:flex-1 bg-gray-50 dark:bg-gray-900 z-20 flex flex-col h-full w-full">
+  
+  <!-- Editor Toolbar -->
+  <div class="h-16 px-4 flex items-center justify-between border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shrink-0">
+    <div class="flex items-center gap-3">
+      <!-- Back Button (Mobile Only) -->
+      <button onclick="goBack()" class="md:hidden w-10 h-10 -ml-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center text-gray-600 dark:text-gray-300">
+        <i class="fa-solid fa-arrow-left"></i>
+      </button>
+      <span id="status-text" class="text-xs font-bold text-gray-400 uppercase tracking-wider">New Note</span>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <input type="file" id="file-input" multiple class="hidden" onchange="handleFileSelect(this)">
+      <button onclick="document.getElementById('file-input').click()" class="w-10 h-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 relative transition-colors" title="Attach File">
+        <i class="fa-solid fa-paperclip"></i>
+        <span id="file-badge" class="hidden absolute top-2.5 right-2.5 w-2 h-2 bg-blue-500 rounded-full"></span>
+      </button>
       
-      <div class="flex items-center gap-2">
-        <input type="file" id="file-input" multiple class="hidden" onchange="handleFileSelect(this)">
-        <button onclick="document.getElementById('file-input').click()" class="w-10 h-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 relative">
-          <i class="fa-solid fa-paperclip"></i>
-          <span id="file-badge" class="hidden absolute top-2 right-2 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white dark:border-gray-900"></span>
-        </button>
-        
-        <button onclick="saveNote()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-full shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2 text-sm">
-          <span>Save</span>
-          <i class="fa-solid fa-check"></i>
-        </button>
-        
-        <button id="delete-btn" onclick="deleteNote()" class="hidden w-10 h-10 rounded-full text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center justify-center transition-colors">
-          <i class="fa-regular fa-trash-can"></i>
-        </button>
-      </div>
+      <button onclick="saveNote()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-lg shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2 text-sm" title="Save (Ctrl+S)">
+        <span>Save</span>
+      </button>
+      
+      <button id="delete-btn" onclick="deleteNote()" class="hidden w-10 h-10 rounded-full text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center justify-center transition-colors" title="Delete">
+        <i class="fa-regular fa-trash-can"></i>
+      </button>
     </div>
+  </div>
 
-    <!-- Scrollable Editor Area -->
-    <div class="flex-1 overflow-y-auto">
-      <div class="max-w-3xl mx-auto p-5 pb-32 min-h-full flex flex-col">
-        <input id="note-title" type="text" placeholder="Title" 
-          class="bg-transparent text-3xl font-bold text-gray-900 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-700 border-none focus:ring-0 p-0 mb-6 w-full outline-none">
-        
-        <textarea id="note-body" placeholder="Start typing securely..." 
-          class="flex-1 bg-transparent resize-none text-lg leading-relaxed text-gray-700 dark:text-gray-300 border-none focus:ring-0 p-0 w-full outline-none placeholder-gray-300 dark:placeholder-gray-700"></textarea>
-        
-        <!-- Attachments Preview -->
-        <div id="file-list" class="flex flex-wrap gap-2 mt-8 empty:hidden"></div>
-      </div>
+  <!-- Editor Inputs -->
+  <div class="flex-1 overflow-y-auto">
+    <div class="max-w-4xl mx-auto p-6 md:p-10 pb-32 min-h-full flex flex-col">
+      <input id="note-title" type="text" placeholder="Note Title" 
+        class="bg-transparent text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-700 border-none focus:ring-0 p-0 mb-6 w-full outline-none">
+      
+      <textarea id="note-body" placeholder="Start typing securely..." 
+        class="flex-1 bg-transparent resize-none text-lg md:text-xl leading-relaxed text-gray-700 dark:text-gray-300 border-none focus:ring-0 p-0 w-full outline-none placeholder-gray-300 dark:placeholder-gray-700"></textarea>
+      
+      <!-- File List -->
+      <div id="file-list" class="flex flex-wrap gap-3 mt-8 pt-6 border-t border-gray-100 dark:border-gray-800 empty:hidden"></div>
     </div>
-  </main>
+  </div>
+</main>
 
-</div>
 
 <!-- ======================= LOGIC ======================= -->
 <script>
-/* --- MOBILE NAVIGATION --- */
+/* --- NAVIGATION LOGIC --- */
 function isMobile() { return window.innerWidth < 768; }
 
 function goBack() {
-  if (!isMobile()) return;
-  document.getElementById('view-editor').classList.add('view-hidden-right');
-  document.getElementById('view-editor').classList.remove('view-active');
-  document.getElementById('view-list').classList.remove('view-hidden-left');
+  if (!isMobile()) return; // PC: Do nothing
+  // Mobile: Slide Editor Out, Slide List In
+  const editor = document.getElementById('view-editor');
+  const list = document.getElementById('view-list');
   
-  // Clear selection if we are just a guest going back
-  if (!STATE.isAdmin) setTimeout(() => resetEditor(), 300);
+  editor.classList.add('view-right-hidden');
+  editor.classList.remove('view-right-active');
+  list.classList.remove('view-left-hidden');
+  list.classList.add('view-left-active');
+  
+  // If guest, clear editor on back to keep it "Write Only" feel
+  if(!STATE.isAdmin) setTimeout(resetEditor, 300);
 }
 
-function openEditor() {
-  document.getElementById('view-editor').classList.remove('view-hidden-right');
-  document.getElementById('view-editor').classList.add('view-active');
-  if (isMobile()) document.getElementById('view-list').classList.add('view-hidden-left');
+function openEditorView() {
+  // Mobile: Slide Editor In
+  const editor = document.getElementById('view-editor');
+  const list = document.getElementById('view-list');
+  
+  if (isMobile()) {
+    editor.classList.remove('view-right-hidden');
+    editor.classList.add('view-right-active');
+    list.classList.add('view-left-hidden');
+    list.classList.remove('view-left-active');
+  }
 }
 
 function createNewNote() {
   resetEditor();
-  openEditor();
+  openEditorView();
   setTimeout(() => document.getElementById('note-title').focus(), 100);
 }
 
 /* --- STATE --- */
-const STATE = {
-  isAdmin: false,
-  privateKey: null, 
-  notes: [],
-  currentNote: null,
-  pendingFiles: []
-};
+const STATE = { isAdmin: false, privateKey: null, notes: [], currentNote: null, pendingFiles: [] };
 
-/* --- CRYPTO ENGINE --- */
-const enc = new TextEncoder();
-const dec = new TextDecoder();
+/* --- CRYPTO --- */
+const enc = new TextEncoder(); const dec = new TextDecoder();
 const bufToB64 = b => btoa(String.fromCharCode(...new Uint8Array(b)));
 const b64ToBuf = b => Uint8Array.from(atob(b), c => c.charCodeAt(0));
 
@@ -231,7 +245,7 @@ async function unwrapKeyWithRsa(b64Wrapped, privKey) {
   return crypto.subtle.importKey("raw", rawKey, "AES-GCM", true, ["encrypt", "decrypt"]);
 }
 
-/* --- AUTH --- */
+/* --- ADMIN --- */
 function openLogin() { 
   const el = document.getElementById('login-modal');
   el.classList.remove('hidden');
@@ -247,8 +261,8 @@ function closeLogin() {
 async function attemptAdminLogin() {
   const password = document.getElementById('admin-password').value;
   const btn = document.getElementById('unlock-btn');
-  const originalText = btn.innerHTML;
-  btn.innerHTML = `<div class="loader"></div>`;
+  const originalHtml = btn.innerHTML;
+  btn.innerHTML = `<div class="loader text-white"></div>`;
   
   try {
     const salt = b64ToBuf(CONFIG.PRIVATE_KEY_SALT);
@@ -262,24 +276,19 @@ async function attemptAdminLogin() {
     STATE.isAdmin = true;
     closeLogin();
     enableAdminUI();
-    showToast("🔓 Vault Unlocked", "success");
+    showToast("Vault Unlocked", "success");
   } catch(e) {
     showToast("Incorrect Password", "error");
     document.getElementById('admin-password').value = "";
-    btn.innerHTML = originalText;
+    btn.innerHTML = originalHtml;
   }
 }
 
 function enableAdminUI() {
   document.getElementById('mode-badge').innerText = "ADMIN ACCESS";
-  document.getElementById('mode-badge').className = "text-[10px] font-bold text-blue-500 tracking-wider";
+  document.getElementById('mode-badge').className = "text-[10px] font-bold text-blue-500 uppercase tracking-wider mt-0.5";
   document.getElementById('lock-btn').classList.add('hidden');
   document.getElementById('delete-btn').classList.remove('hidden');
-  
-  // Add "New" button to sidebar top for Desktop convenience
-  if(!isMobile()){
-     // Logic handled by FAB or header
-  }
   refreshNotes();
 }
 
@@ -288,7 +297,7 @@ async function saveNote() {
   const title = document.getElementById('note-title').value.trim() || "Untitled";
   const body = document.getElementById('note-body').value;
   
-  if(!body && STATE.pendingFiles.length === 0) return showToast("Note is empty", "error");
+  if(!body && STATE.pendingFiles.length === 0) return showToast("Cannot save empty note", "error");
   showToast("Encrypting...", "info");
   
   try {
@@ -311,7 +320,7 @@ async function saveNote() {
 
     const r = await fetch('/api/notes', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(reqBody) });
     if((await r.json()).ok) {
-      showToast("✅ Saved Securely", "success");
+      showToast("Saved Securely", "success");
       if(STATE.isAdmin) refreshNotes();
       else { resetEditor(); goBack(); }
     } else throw new Error("Server error");
@@ -321,8 +330,13 @@ async function saveNote() {
 async function loadNote(id) {
   if(!STATE.isAdmin) return;
   document.getElementById('status-text').innerText = "Decrypting...";
-  openEditor(); // Slide in view
+  openEditorView();
   
+  // Highlight in list (Desktop)
+  document.querySelectorAll('.note-item').forEach(el => el.classList.remove('bg-blue-50', 'dark:bg-gray-800', 'border-l-4', 'border-blue-500'));
+  const activeEl = document.getElementById(`note-${id}`);
+  if(activeEl) activeEl.classList.add('bg-blue-50', 'dark:bg-gray-800', 'border-l-4', 'border-blue-500');
+
   try {
     const r = await fetch(`/api/notes/${id}`);
     const note = await r.json();
@@ -342,7 +356,7 @@ async function loadNote(id) {
     document.getElementById('status-text').innerText = "Last Saved: " + new Date(note.created_at).toLocaleTimeString();
   } catch(e) {
     showToast("Decryption Failed", "error");
-    goBack();
+    if(isMobile()) goBack();
   }
 }
 
@@ -350,21 +364,22 @@ async function refreshNotes() {
   const r = await fetch('/api/notes');
   const d = await r.json();
   const el = document.getElementById('note-list');
-  el.innerHTML = ""; // Clear
+  el.innerHTML = "";
   
   if(!d.notes || d.notes.length === 0) {
-    el.innerHTML = `<div class="text-center mt-20 text-gray-400 text-sm">No notes found.</div>`;
+    el.innerHTML = `<div class="flex flex-col items-center justify-center h-40 text-gray-400 text-sm"><p>No notes found.</p></div>`;
     return;
   }
 
   d.notes.forEach(n => {
-    const div = document.createElement('button');
-    div.className = "w-full text-left p-4 border-b border-gray-100 dark:border-gray-800 active:bg-gray-50 dark:active:bg-gray-900 transition-colors";
+    const div = document.createElement('div');
+    div.id = `note-${n.id}`;
+    div.className = "note-item group w-full text-left p-4 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-900 transition-all cursor-pointer";
     div.innerHTML = `
-      <div class="font-bold text-gray-800 dark:text-gray-100 truncate text-base mb-1">${escapeHtml(n.title||"Untitled")}</div>
+      <div class="font-bold text-gray-900 dark:text-gray-100 truncate text-sm mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">${escapeHtml(n.title||"Untitled")}</div>
       <div class="flex items-center justify-between text-xs text-gray-400">
         <span>${new Date(n.created_at).toLocaleDateString()}</span>
-        ${n.files && n.files.length ? '<i class="fa-solid fa-paperclip"></i>' : ''}
+        ${n.files && n.files.length ? '<i class="fa-solid fa-paperclip text-blue-500"></i>' : ''}
       </div>
     `;
     div.onclick = () => loadNote(n.id);
@@ -372,21 +387,19 @@ async function refreshNotes() {
   });
 }
 
-/* --- FILES --- */
+/* --- FILES & UI --- */
 function renderFiles() {
   const el = document.getElementById('file-list'); el.innerHTML = "";
   const allFiles = [...(STATE.currentNote?.files||[]).map(f=>({...f, remote:true})), ...STATE.pendingFiles.map(f=>({...f, remote:false}))];
-  
   document.getElementById('file-badge').classList.toggle('hidden', allFiles.length === 0);
 
   allFiles.forEach(f => {
     const d = document.createElement('div');
-    d.className = `inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border ${f.remote ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`;
-    d.innerHTML = `<i class="fa-solid ${f.remote ? 'fa-file' : 'fa-upload'}"></i> <span class="max-w-[150px] truncate">${escapeHtml(f.filename)}</span>`;
-    
+    d.className = `inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border ${f.remote ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700' : 'bg-blue-50 border-blue-100 text-blue-700'}`;
+    d.innerHTML = `<i class="fa-solid ${f.remote ? 'fa-file text-gray-400' : 'fa-upload'}"></i> <span class="max-w-[120px] truncate font-medium">${escapeHtml(f.filename)}</span>`;
     if(f.remote && STATE.isAdmin) {
       d.onclick = () => downloadFile(f);
-      d.classList.add('cursor-pointer', 'active:scale-95');
+      d.classList.add('cursor-pointer', 'hover:bg-gray-200', 'dark:hover:bg-gray-700');
     }
     el.appendChild(d);
   });
@@ -413,9 +426,9 @@ async function downloadFile(f) {
 
 async function deleteNote() {
   if(!STATE.isAdmin || !STATE.currentNote) return;
-  if(confirm("Delete note?")) {
+  if(confirm("Permanently delete this note?")) {
     await fetch(`/api/notes/${STATE.currentNote.id}`, {method:'DELETE'});
-    resetEditor(); refreshNotes(); goBack(); showToast("Deleted", "info");
+    resetEditor(); refreshNotes(); if(isMobile()) goBack(); showToast("Deleted", "info");
   }
 }
 
@@ -424,10 +437,12 @@ function resetEditor() {
   document.getElementById('note-title').value = "";
   document.getElementById('note-body').value = "";
   document.getElementById('status-text').innerText = "New Note";
+  
+  // Clear highlighting on desktop
+  document.querySelectorAll('.note-item').forEach(el => el.classList.remove('bg-blue-50', 'dark:bg-gray-800', 'border-l-4', 'border-blue-500'));
   renderFiles();
 }
 
-/* --- UTILS --- */
 function showToast(msg, type='info') {
   const d = document.createElement('div');
   const bg = type==='error'?'bg-red-500':type==='success'?'bg-green-600':'bg-gray-800';
@@ -439,9 +454,14 @@ function showToast(msg, type='info') {
 function toggleTheme() { document.documentElement.classList.toggle('dark'); }
 function escapeHtml(s) { return s?s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"):s; }
 
-// Init dark mode pref
-if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark');
+// Shortcuts
+document.addEventListener('keydown', e => {
+  if((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveNote(); }
+  if(e.key === 'Escape') closeLogin();
+});
 
+// Init
+if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark');
 </script>
 </body>
 </html>
