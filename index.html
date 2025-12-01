@@ -3,430 +3,369 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>mycloudtext — Secure Notes</title>
+<title>MyCloudText — Secure</title>
 <style>
-  :root{
-    --bg:#f6f6f7; --card:#fff; --text:#111; --muted:#666; --accent:#0a66ff;
-  }
-  [data-theme="dark"]{
-    --bg:#0b0b0d; --card:#0f1113; --text:#e6e6e6; --muted:#9aa0a6;
-  }
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;background:var(--bg);color:var(--text);}
-  header{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid rgba(0,0,0,0.06);background:var(--card)}
-  .brand{font-weight:600}
-  main{display:flex;gap:20px;padding:18px;max-width:1100px;margin:24px auto}
-  .sidebar{width:320px;max-height:75vh;overflow:auto;background:var(--card);border-radius:8px;padding:12px;box-shadow:0 6px 18px rgba(0,0,0,0.04)}
-  .content{flex:1;background:var(--card);border-radius:8px;padding:16px;min-height:60vh;box-shadow:0 6px 18px rgba(0,0,0,0.04)}
-  .note-item{padding:10px;border-radius:6px;margin-bottom:8px;cursor:pointer}
-  .note-item:hover{background:rgba(0,0,0,0.03)}
-  .controls{display:flex;gap:8px;align-items:center}
-  textarea{width:100%;min-height:320px;padding:12px;border:1px solid rgba(0,0,0,0.06);border-radius:6px;background:transparent;color:var(--text)}
-  input[type="text"]{width:100%;padding:10px;border-radius:6px;border:1px solid rgba(0,0,0,0.06)}
-  button{padding:8px 12px;border-radius:6px;border:0;background:var(--accent);color:white;cursor:pointer}
-  .btn-ghost{background:transparent;border:1px solid rgba(0,0,0,0.08);color:var(--text)}
-  .muted{color:var(--muted);font-size:13px}
-  .small{font-size:13px}
-  .top-actions{display:flex;gap:8px;align-items:center}
-  .file-list{margin-top:8px}
-  .file-row{display:flex;justify-content:space-between;gap:12px;padding:6px 8px;border-radius:6px;background:rgba(0,0,0,0.02);margin-bottom:6px}
-  .hidden{display:none}
-  .center{display:flex;align-items:center;justify-content:center;height:60vh}
-  .login-card{width:360px;padding:20px;border-radius:10px;background:var(--card);box-shadow:0 16px 40px rgba(0,0,0,0.08)}
-  footer{padding:10px;text-align:center;color:var(--muted)}
+  :root{ --bg:#f6f6f7; --card:#fff; --text:#111; --muted:#666; --accent:#0a66ff; }
+  [data-theme="dark"]{ --bg:#0b0b0d; --card:#15171a; --text:#e6e6e6; --muted:#9aa0a6; }
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;}
+  
+  /* Layout */
+  header{height:50px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:var(--card);border-bottom:1px solid rgba(128,128,128,0.1);}
+  main{display:flex;height:calc(100vh - 51px);}
+  
+  .sidebar{width:300px;background:var(--card);border-right:1px solid rgba(128,128,128,0.1);display:flex;flex-direction:column;}
+  .note-list{flex:1;overflow-y:auto;padding:10px;}
+  .editor{flex:1;display:flex;flex-direction:column;padding:20px;overflow-y:auto;}
+
+  /* Components */
+  .note-item{padding:12px;border-radius:6px;margin-bottom:4px;cursor:pointer;border:1px solid transparent;}
+  .note-item:hover{background:rgba(128,128,128,0.05);}
+  .note-item.active{background:rgba(10,102,255,0.1);border-color:rgba(10,102,255,0.2);color:var(--accent);}
+  
+  input, textarea{background:transparent;border:none;color:var(--text);outline:none;font-family:inherit;}
+  input{font-size:1.5rem;font-weight:700;width:100%;margin-bottom:10px;padding:5px 0;}
+  textarea{flex:1;resize:none;font-size:1.1rem;line-height:1.6;}
+  
+  button{padding:8px 16px;border-radius:6px;border:0;background:var(--accent);color:white;cursor:pointer;font-weight:500;}
+  button:hover{opacity:0.9;}
+  .btn-ghost{background:transparent;color:var(--muted);border:1px solid rgba(128,128,128,0.2);}
+  .btn-danger{background:#ff3333;color:white;}
+  
+  .toolbar{display:flex;gap:10px;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid rgba(128,128,128,0.1);}
+  .file-area{margin-top:20px;padding-top:10px;border-top:1px dashed rgba(128,128,128,0.2);}
+  .file-chip{display:inline-flex;align-items:center;gap:8px;background:rgba(128,128,128,0.1);padding:4px 10px;border-radius:20px;font-size:0.85rem;margin-right:5px;margin-bottom:5px;}
+  
+  .overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:999;display:flex;align-items:center;justify-content:center;}
+  .login-box{width:350px;background:var(--card);padding:30px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.1);text-align:center;}
+  .hidden{display:none !important;}
+  .spin{animation: spin 1s linear infinite;}
+  @keyframes spin { 100% { transform: rotate(360deg); } }
 </style>
 </head>
 <body data-theme="light">
+
+<div id="loginOverlay" class="overlay">
+  <div class="login-box">
+    <h2 style="margin-top:0">MyCloudText</h2>
+    <p class="muted" style="margin-bottom:20px">End-to-End Encrypted Notes</p>
+    <input id="pwInput" type="password" placeholder="Encryption Password" style="font-size:1rem;border:1px solid #ccc;border-radius:4px;padding:10px;margin-bottom:15px;">
+    <button onclick="doLogin()" style="width:100%">Unlock Notes</button>
+    <div style="margin-top:15px">
+      <button class="btn-ghost" onclick="doGuest()">Guest Mode</button>
+    </div>
+  </div>
+</div>
+
 <header>
-  <div class="brand">mycloudtext</div>
-  <div class="controls">
-    <label class="muted small">Theme</label>
-    <select id="themeSelect" onchange="toggleTheme()" title="Theme">
+  <div style="font-weight:700;font-size:1.1rem;">mycloudtext</div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <span id="status" class="muted" style="font-size:0.8rem"></span>
+    <select onchange="setTheme(this.value)" style="border:1px solid #ccc;padding:4px;border-radius:4px;font-size:0.8rem">
       <option value="light">Light</option>
       <option value="dark">Dark</option>
     </select>
   </div>
 </header>
 
-<main id="app" class="hidden">
+<main>
   <aside class="sidebar">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <strong>Notes</strong>
-      <div>
-        <button class="btn-ghost" onclick="showNewNote()">New</button>
-      </div>
+    <div style="padding:15px;border-bottom:1px solid rgba(128,128,128,0.1);display:flex;justify-content:space-between;align-items:center;">
+      <strong>All Notes</strong>
+      <button class="btn-ghost" style="padding:4px 10px;font-size:0.8rem" onclick="initNewNote()">+ New</button>
     </div>
-    <div id="notesList" class="small"></div>
+    <div id="noteList" class="note-list"></div>
   </aside>
 
-  <section class="content">
-    <div class="top-actions" style="justify-content:space-between">
-      <div style="flex:1;margin-right:10px">
-        <input id="noteTitle" placeholder="Title" type="text"/>
-      </div>
-      <div style="display:flex;gap:8px">
-        <input id="fileInput" type="file" multiple />
-        <button onclick="saveCurrent()">Save</button>
-        <button class="btn-ghost" onclick="deleteCurrent()">Delete</button>
-        <button class="btn-ghost" onclick="loadNotes()">Refresh</button>
-      </div>
+  <section class="editor">
+    <div class="toolbar">
+      <div style="flex:1"></div>
+      <input type="file" id="filePicker" multiple style="display:none" onchange="handleFileSelect(this)">
+      <button class="btn-ghost" onclick="document.getElementById('filePicker').click()">📎 Attach</button>
+      <button onclick="saveNote()">Save Changes</button>
+      <button class="btn-danger" onclick="deleteNote()">Delete</button>
     </div>
 
-    <div style="margin-top:12px">
-      <textarea id="noteBody" placeholder="Write your note here..."></textarea>
-      <div class="file-list muted small" id="attachedFiles"></div>
+    <input id="noteTitle" type="text" placeholder="Note Title...">
+    <textarea id="noteBody" placeholder="Start typing your encrypted note..."></textarea>
+    
+    <div class="file-area">
+      <div style="font-size:0.8rem;color:var(--muted);margin-bottom:5px">Attachments</div>
+      <div id="fileList"></div>
     </div>
   </section>
 </main>
 
-<!-- Login screen -->
-<div id="login" class="center">
-  <div class="login-card">
-    <h3>Secure access</h3>
-    <p class="muted">Enter your password to unlock your encrypted notes. The password never leaves your browser.</p>
-    <input id="passwordInput" type="password" placeholder="Password" style="width:100%;padding:10px;margin-top:8px;border-radius:6px;border:1px solid rgba(0,0,0,0.06)"/>
-    <div style="display:flex;gap:8px;margin-top:12px">
-      <button onclick="login()">Unlock</button>
-      <button class="btn-ghost" onclick="guestMode()">Guest (no password)</button>
-    </div>
-    <p class="muted small" style="margin-top:10px">If you lose this password, encrypted notes cannot be recovered.</p>
-  </div>
-</div>
-
-<footer style="position:fixed;left:10px;bottom:10px">Files limited to 5 MB each • End-to-end encrypted</footer>
-
 <script>
-/* ---------- Crypto helpers using Web Crypto API ---------- */
-
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+/* --- 1. Crypto Engine (Web Crypto API) --- */
+const enc = new TextEncoder();
+const dec = new TextDecoder();
 
 async function deriveKey(password, saltB64) {
-  const salt = b64ToArr(saltB64);
-  const pwKey = await crypto.subtle.importKey("raw", encoder.encode(password), {name:"PBKDF2"}, false, ["deriveKey"]);
-  const key = await crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations: 200000, hash: "SHA-256" },
-    pwKey,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"]
+  const salt = Uint8Array.from(atob(saltB64), c => c.charCodeAt(0));
+  const keyMat = await crypto.subtle.importKey("raw", enc.encode(password), {name:"PBKDF2"}, false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    keyMat, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
   );
-  return key;
 }
 
-async function encryptJson(obj, key) {
+async function encryptData(dataStr, key) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const plain = encoder.encode(JSON.stringify(obj));
-  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, plain);
-  return { iv: arrToB64(iv), data: arrToB64(new Uint8Array(ct)) };
+  const buf = enc.encode(dataStr);
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, buf);
+  return { 
+    iv: btoa(String.fromCharCode(...iv)), 
+    data: btoa(String.fromCharCode(...new Uint8Array(ct))) 
+  };
 }
 
-async function decryptJson(b64data, ivB64, key) {
-  try {
-    const iv = b64ToArr(ivB64);
-    const ct = b64ToArr(b64data);
-    const plain = await crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct);
-    return JSON.parse(decoder.decode(plain));
-  } catch (e) {
-    console.error("Decrypt failed", e);
-    throw new Error("Decryption failed (wrong password or corrupted data)");
-  }
+async function decryptData(b64Data, b64Iv, key) {
+  const iv = Uint8Array.from(atob(b64Iv), c => c.charCodeAt(0));
+  const ct = Uint8Array.from(atob(b64Data), c => c.charCodeAt(0));
+  const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct);
+  return dec.decode(pt);
 }
 
-function arrToB64(buf) {
-  // buf is Uint8Array
-  let binary = "";
-  const len = buf.byteLength;
-  for (let i = 0; i < len; i++) binary += String.fromCharCode(buf[i]);
-  return btoa(binary);
+// Helper for files (Binary <-> Base64)
+async function encryptFile(arrayBuf, key) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, arrayBuf);
+  return { 
+    iv: btoa(String.fromCharCode(...iv)), 
+    data: btoa(String.fromCharCode(...new Uint8Array(ct))) 
+  };
+}
+async function decryptFile(b64Data, b64Iv, key) {
+  const iv = Uint8Array.from(atob(b64Iv), c => c.charCodeAt(0));
+  const ct = Uint8Array.from(atob(b64Data), c => c.charCodeAt(0));
+  return crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct);
 }
 
-function b64ToArr(b64) {
-  const binary = atob(b64);
-  const len = binary.length;
-  const arr = new Uint8Array(len);
-  for (let i = 0; i < len; i++) arr[i] = binary.charCodeAt(i);
-  return arr;
-}
-
-/* ---------- UI + App logic ---------- */
-
+/* --- 2. App State & Logic --- */
 let STATE = {
-  password: null, // not stored anywhere persistent
-  notesMeta: [],
-  currentNote: null, // { id, title, salt, iv, data, files }
-  attachmentsToUpload: [] // { filename, data:b64 (encrypted), iv }
+  password: null,
+  notes: [],
+  currentNote: null,
+  pendingFiles: [] // Files waiting to be uploaded
 };
 
-const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5MB
+// UI Helpers
+const $ = id => document.getElementById(id);
+const setStatus = msg => $('status').innerText = msg;
 
-document.getElementById("fileInput").addEventListener("change", handleFiles);
-document.getElementById("themeSelect").value = localStorage.getItem("theme") || "light";
-applyTheme(localStorage.getItem("theme")||"light");
+// Theme
+if(localStorage.getItem('theme')) setTheme(localStorage.getItem('theme'));
+function setTheme(t) { document.body.setAttribute('data-theme', t); localStorage.setItem('theme', t); }
 
-async function login() {
-  const pw = document.getElementById("passwordInput").value.trim();
-  if (!pw) return alert("Enter a password (if you want a passwordless demo, use Guest).");
+// Auth
+function doLogin() {
+  const pw = $('pwInput').value;
+  if(!pw) return alert("Password required");
   STATE.password = pw;
-  document.getElementById("login").classList.add("hidden");
-  document.getElementById("app").classList.remove("hidden");
-  await loadNotes();
+  $('loginOverlay').classList.add('hidden');
+  loadNotes();
 }
-
-function guestMode(){
-  // guest mode: allows testing but encryption still runs using temporary password (will be gone on refresh)
-  STATE.password = "guest-temp-" + Math.random().toString(36).slice(2,10);
-  document.getElementById("login").classList.add("hidden");
-  document.getElementById("app").classList.remove("hidden");
+function doGuest() {
+  STATE.password = "guest-" + Math.random();
+  $('loginOverlay').classList.add('hidden');
   loadNotes();
 }
 
-async function loadNotes(){
+// API
+async function loadNotes() {
+  setStatus("Loading...");
   try {
-    const r = await fetch("/api/notes");
-    const j = await r.json();
-    STATE.notesMeta = j.notes || [];
-    renderNotesList();
-    clearEditor();
-  } catch (e) {
-    console.error(e);
-    alert("Failed to load notes from server.");
-  }
+    const r = await fetch('/api/notes');
+    const d = await r.json();
+    STATE.notes = d.notes || [];
+    renderList();
+    setStatus("Ready");
+  } catch(e) { setStatus("Error loading notes"); }
 }
 
-function renderNotesList(){
-  const el = document.getElementById("notesList");
+function renderList() {
+  const el = $('noteList');
   el.innerHTML = "";
-  if (!STATE.notesMeta.length) {
-    el.innerHTML = `<div class="muted">No notes yet</div>`;
-    return;
-  }
-  STATE.notesMeta.sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
-  for (const n of STATE.notesMeta) {
-    const div = document.createElement("div");
-    div.className = "note-item";
-    div.innerHTML = `<strong>${escapeHtml(n.title||"Untitled")}</strong><div class="muted small">${new Date(n.createdAt).toLocaleString()}</div>`;
-    div.onclick = () => openNote(n.id);
+  STATE.notes.forEach(n => {
+    const div = document.createElement('div');
+    div.className = `note-item ${STATE.currentNote && STATE.currentNote.id === n.id ? 'active' : ''}`;
+    div.innerHTML = `<strong>${esc(n.title)}</strong><br><small class="muted">${new Date(n.created_at).toLocaleDateString()}</small>`;
+    div.onclick = () => loadFullNote(n.id);
     el.appendChild(div);
-  }
+  });
 }
 
-function escapeHtml(s){ return s.replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
-
-function clearEditor(){
+function initNewNote() {
   STATE.currentNote = null;
-  document.getElementById("noteTitle").value = "";
-  document.getElementById("noteBody").value = "";
-  STATE.attachmentsToUpload = [];
-  document.getElementById("attachedFiles").innerHTML = "";
+  STATE.pendingFiles = [];
+  $('noteTitle').value = "";
+  $('noteBody').value = "";
+  $('fileList').innerHTML = "";
+  renderList(); // clears active class
 }
 
-function showNewNote(){
-  clearEditor();
-  document.getElementById("noteTitle").focus();
-}
-
-async function openNote(id){
+async function loadFullNote(id) {
+  setStatus("Downloading & Decrypting...");
   try {
-    const r = await fetch(`/api/notes/${encodeURIComponent(id)}`);
-    if (!r.ok) throw new Error("note load failed");
-    const j = await r.json();
-    // decrypt using derived key (need salt)
-    const salt = j.salt;
-    const key = await deriveKey(STATE.password, salt);
-    const plain = await decryptJson(j.data, j.iv, key);
-    // plain is expected to be { body: "...", maybe other fields }
-    STATE.currentNote = { id: j.id, title: j.title, salt: j.salt, iv: j.iv, rawEncryptedData: j.data, files: [] };
-    document.getElementById("noteTitle").value = j.title || "";
-    document.getElementById("noteBody").value = plain.body || "";
+    const r = await fetch(`/api/notes/${id}`);
+    const note = await r.json();
+    
+    // Decrypt
+    const key = await deriveKey(STATE.password, note.salt);
+    const body = await decryptData(note.data, note.iv, key); // Body is encrypted JSON {text: "..."}
+    const bodyObj = JSON.parse(body);
 
-    // files: j.files contains base64 encrypted content + iv; we will keep them in STATE.currentNote.files
-    const fileListEl = document.getElementById("attachedFiles");
-    fileListEl.innerHTML = "";
-    STATE.currentNote.files = [];
-    for (const f of j.files || []) {
-      STATE.currentNote.files.push({filename: f.filename, dataB64: f.data, iv: f.iv, size: f.size});
-      const row = document.createElement("div");
-      row.className = "file-row";
-      row.innerHTML = `<div>${escapeHtml(f.filename)} <span class="muted small">(${Math.round(f.size/1024)} KB)</span></div><div><button class="btn-ghost" onclick="downloadFile('${f.filename}')">Download</button></div>`;
-      fileListEl.appendChild(row);
-    }
-  } catch (e) {
+    STATE.currentNote = note;
+    STATE.currentNote.files = note.files || []; // Store existing files
+    STATE.pendingFiles = []; // Clear pending
+
+    $('noteTitle').value = note.title;
+    $('noteBody').value = bodyObj.text || "";
+    
+    renderFiles();
+    renderList();
+    setStatus("Decrypted");
+  } catch(e) {
     console.error(e);
-    alert("Unable to open note (maybe wrong password?).");
+    alert("Decryption failed. Wrong password?");
+    setStatus("Error");
   }
 }
 
-async function downloadFile(filename){
-  const f = (STATE.currentNote.files||[]).find(x=>x.filename===filename);
-  if(!f) return alert("File not found in note.");
+function renderFiles() {
+  const el = $('fileList');
+  el.innerHTML = "";
+
+  // 1. Existing Server Files
+  if (STATE.currentNote && STATE.currentNote.files) {
+    STATE.currentNote.files.forEach(f => {
+      const chip = document.createElement('div');
+      chip.className = 'file-chip';
+      chip.innerHTML = `<span>📄 ${esc(f.filename)} <small>(${(f.size/1024).toFixed(0)}KB)</small></span>`;
+      
+      const btn = document.createElement('button');
+      btn.innerText = "⬇";
+      btn.className = "btn-ghost";
+      btn.style.padding = "2px 6px";
+      btn.onclick = () => downloadFile(f);
+      chip.appendChild(btn);
+      el.appendChild(chip);
+    });
+  }
+
+  // 2. Pending Uploads
+  STATE.pendingFiles.forEach(f => {
+    const chip = document.createElement('div');
+    chip.className = 'file-chip';
+    chip.style.border = "1px solid var(--accent)";
+    chip.innerHTML = `<span>📎 ${esc(f.filename)} <small>(Ready to upload)</small></span>`;
+    el.appendChild(chip);
+  });
+}
+
+// File Logic
+async function handleFileSelect(input) {
+  for (const file of input.files) {
+    if (file.size > 10 * 1024 * 1024) { alert(`Skipping ${file.name} (Too big)`); continue; }
+    const buf = await file.arrayBuffer();
+    STATE.pendingFiles.push({ filename: file.name, raw: buf });
+  }
+  renderFiles();
+  input.value = ""; // reset
+}
+
+async function downloadFile(fMeta) {
+  setStatus("Decrypting file...");
   try {
     const key = await deriveKey(STATE.password, STATE.currentNote.salt);
-    const dec = await decryptFileB64(f.dataB64, f.iv, key);
-    // create blob and trigger download
-    const blob = new Blob([dec]);
+    const decryptedBuf = await decryptFile(fMeta.data, fMeta.iv, key);
+    
+    const blob = new Blob([decryptedBuf]);
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+    const a = document.createElement('a');
     a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
+    a.download = fMeta.filename;
     a.click();
-    a.remove();
     URL.revokeObjectURL(url);
-  } catch (e) {
-    console.error(e);
-    alert("Failed to decrypt/download file (wrong password?).");
+    setStatus("Downloaded");
+  } catch(e) {
+    alert("File decryption failed");
+    setStatus("Error");
   }
 }
 
-/* --------- file handling & encryption --------- */
+// Save & Delete
+async function saveNote() {
+  const title = $('noteTitle').value.trim() || "Untitled";
+  const bodyText = $('noteBody').value;
+  setStatus("Encrypting & Uploading...");
 
-function handleFiles(ev){
-  const files = Array.from(ev.target.files || []);
-  const out = document.getElementById("attachedFiles");
-  for (const f of files){
-    if (f.size > MAX_FILE_BYTES) {
-      alert(`File ${f.name} exceeds 5 MB limit and was skipped.`);
-      continue;
-    }
-    // read file as ArrayBuffer then encrypt with current password-derived key
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const arr = new Uint8Array(reader.result);
-      const salt = getOrNewSalt(); // use a salt for this note (if creating new note, make new salt below)
-      const key = await deriveKey(STATE.password, salt);
-      const { iv, data } = await encryptArrayBuffer(arr, key);
-      // store pending attachment as encrypted base64
-      STATE.attachmentsToUpload.push({ filename: f.name, dataB64: data, iv, size: f.size });
-      // add to UI
-      const row = document.createElement("div");
-      row.className = "file-row";
-      row.innerHTML = `<div>${escapeHtml(f.name)} <span class="muted small">(ready)</span></div>`;
-      out.appendChild(row);
-    };
-    reader.readAsArrayBuffer(f);
-  }
-  // reset input
-  ev.target.value = "";
-}
-
-function getOrNewSalt() {
-  // If editing existing note, use its salt, otherwise create a temp salt for new note.
-  if (STATE.currentNote && STATE.currentNote.salt) return STATE.currentNote.salt;
-  if (!STATE._newSalt) {
+  // Generate Salt
+  let saltB64;
+  if (STATE.currentNote) {
+    saltB64 = STATE.currentNote.salt;
+  } else {
     const s = crypto.getRandomValues(new Uint8Array(16));
-    STATE._newSalt = arrToB64(s);
+    saltB64 = btoa(String.fromCharCode(...s));
   }
-  return STATE._newSalt;
-}
 
-async function encryptArrayBuffer(arr, key) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, arr);
-  return { iv: arrToB64(iv), data: arrToB64(new Uint8Array(ct)) };
-}
+  const key = await deriveKey(STATE.password, saltB64);
 
-async function decryptFileB64(b64data, ivB64, key) {
-  const iv = b64ToArr(ivB64);
-  const ct = b64ToArr(b64data);
-  const plain = await crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct);
-  return new Uint8Array(plain);
-}
+  // Encrypt Body
+  const payload = JSON.stringify({ text: bodyText });
+  const encBody = await encryptData(payload, key);
 
-/* ---------- Save / Delete ---------- */
-
-async function saveCurrent(){
-  const title = document.getElementById("noteTitle").value.trim() || "Untitled";
-  const body = document.getElementById("noteBody").value;
-  // choose salt: existing note's salt OR new random salt
-  const salt = getOrNewSalt();
-  const key = await deriveKey(STATE.password, salt);
-
-  // encrypt JSON payload (note body + metadata)
-  const payload = { body, updatedAt: new Date().toISOString() };
-  const enc = await encryptJson(payload, key);
-
-  // prepare files: combine existing files (if editing) plus new attachments
-  const uploadingFiles = [];
-  // Include newly attached files (already encrypted and in STATE.attachmentsToUpload)
-  for (const f of STATE.attachmentsToUpload) {
-    uploadingFiles.push({ filename: f.filename, data: f.dataB64, iv: f.iv });
+  // Encrypt Pending Files
+  const filesToUpload = [];
+  for (const pf of STATE.pendingFiles) {
+    const encF = await encryptFile(pf.raw, key);
+    filesToUpload.push({
+      filename: pf.filename,
+      data: encF.data,
+      iv: encF.iv
+    });
   }
-  // If editing an existing note that already had stored encrypted files, keep them as-is (they are already stored on server)
-  // However, server-side stored files are returned when opening; to keep them we do nothing special (they remain on server).
-  // For simplicity on update, we'll only send newly added files; previously stored files remain in server entry.
-  const payloadToServer = {
-    id: STATE.currentNote ? STATE.currentNote.id : undefined,
-    title,
-    salt,
-    iv: enc.iv,
-    data: enc.data,
-    files: uploadingFiles
+
+  const reqBody = {
+    id: STATE.currentNote ? STATE.currentNote.id : null,
+    title: title,
+    salt: saltB64,
+    iv: encBody.iv,
+    data: encBody.data,
+    files: filesToUpload // Only sending NEW files. Server will merge.
   };
 
   try {
-    const r = await fetch("/api/notes", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(payloadToServer)
+    const r = await fetch('/api/notes', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(reqBody)
     });
-    const j = await r.json();
-    if (j.ok) {
-      alert("Saved.");
-      // reset temp attachments & new salt
-      STATE.attachmentsToUpload = [];
-      STATE._newSalt = null;
-      await loadNotes();
-      if (j.id) openNote(j.id);
+    const res = await r.json();
+    
+    if (res.ok) {
+      // If success, we reload the note to get the full merged state from server
+      await loadFullNote(res.id);
+      await loadNotes(); // Refresh list
+      setStatus("Saved");
     } else {
-      alert("Save failed: " + (j.error || JSON.stringify(j)));
+      alert("Save failed: " + res.error);
     }
-  } catch (e) {
-    console.error(e);
-    alert("Save error.");
+  } catch(e) {
+    alert("Network error");
   }
 }
 
-async function deleteCurrent(){
-  if (!STATE.currentNote) return alert("No note selected.");
-  if (!confirm("Delete this note? This removes encrypted data from the server.")) return;
-  try {
-    const r = await fetch(`/api/notes/${encodeURIComponent(STATE.currentNote.id)}`, { method: "DELETE" });
-    const j = await r.json();
-    if (j.ok) {
-      alert("Deleted.");
-      await loadNotes();
-    } else alert("Delete failed.");
-  } catch (e) {
-    console.error(e);
-    alert("Delete error.");
-  }
+async function deleteNote() {
+  if(!STATE.currentNote) return;
+  if(!confirm("Permanently delete this note?")) return;
+  
+  await fetch(`/api/notes/${STATE.currentNote.id}`, {method:'DELETE'});
+  initNewNote();
+  loadNotes();
 }
 
-/* ---------- Theme ---------- */
-function toggleTheme() {
-  const t = document.getElementById("themeSelect").value;
-  applyTheme(t);
-  localStorage.setItem("theme", t);
-}
-function applyTheme(t) {
-  document.body.setAttribute("data-theme", t === "dark" ? "dark" : "light");
-}
-
-/* ---------- small helpers ---------- */
-
-async function encryptJson(obj, key) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const plain = encoder.encode(JSON.stringify(obj));
-  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, plain);
-  return { iv: arrToB64(iv), data: arrToB64(new Uint8Array(ct)) };
-}
-async function decryptJson(b64data, ivB64, key) {
-  const iv = b64ToArr(ivB64);
-  const ct = b64ToArr(b64data);
-  const plain = await crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct);
-  return JSON.parse(decoder.decode(plain));
-}
-
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 </script>
 </body>
 </html>
