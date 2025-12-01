@@ -1,180 +1,371 @@
-const express = require("express");
-const path = require("path");
-const fs = require("fs");
-const cors = require("cors");
-const sqlite3 = require("sqlite3").verbose();
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>MyCloudText — Secure</title>
+<style>
+  :root{ --bg:#f6f6f7; --card:#fff; --text:#111; --muted:#666; --accent:#0a66ff; }
+  [data-theme="dark"]{ --bg:#0b0b0d; --card:#15171a; --text:#e6e6e6; --muted:#9aa0a6; }
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;}
+  
+  /* Layout */
+  header{height:50px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:var(--card);border-bottom:1px solid rgba(128,128,128,0.1);}
+  main{display:flex;height:calc(100vh - 51px);}
+  
+  .sidebar{width:300px;background:var(--card);border-right:1px solid rgba(128,128,128,0.1);display:flex;flex-direction:column;}
+  .note-list{flex:1;overflow-y:auto;padding:10px;}
+  .editor{flex:1;display:flex;flex-direction:column;padding:20px;overflow-y:auto;}
 
-// Configuration
-const DATA_DIR = path.join(__dirname, "data");
-const DB_PATH = path.join(DATA_DIR, "notes.db");
-const FILES_DIR = path.join(DATA_DIR, "files");
-const MAX_FILE_BYTES = 10 * 1024 * 1024; // Increased to 10 MB
+  /* Components */
+  .note-item{padding:12px;border-radius:6px;margin-bottom:4px;cursor:pointer;border:1px solid transparent;}
+  .note-item:hover{background:rgba(128,128,128,0.05);}
+  .note-item.active{background:rgba(10,102,255,0.1);border-color:rgba(10,102,255,0.2);color:var(--accent);}
+  
+  input, textarea{background:transparent;border:none;color:var(--text);outline:none;font-family:inherit;}
+  input{font-size:1.5rem;font-weight:700;width:100%;margin-bottom:10px;padding:5px 0;}
+  textarea{flex:1;resize:none;font-size:1.1rem;line-height:1.6;}
+  
+  button{padding:8px 16px;border-radius:6px;border:0;background:var(--accent);color:white;cursor:pointer;font-weight:500;}
+  button:hover{opacity:0.9;}
+  .btn-ghost{background:transparent;color:var(--muted);border:1px solid rgba(128,128,128,0.2);}
+  .btn-danger{background:#ff3333;color:white;}
+  
+  .toolbar{display:flex;gap:10px;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid rgba(128,128,128,0.1);}
+  .file-area{margin-top:20px;padding-top:10px;border-top:1px dashed rgba(128,128,128,0.2);}
+  .file-chip{display:inline-flex;align-items:center;gap:8px;background:rgba(128,128,128,0.1);padding:4px 10px;border-radius:20px;font-size:0.85rem;margin-right:5px;margin-bottom:5px;}
+  
+  .overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:999;display:flex;align-items:center;justify-content:center;}
+  .login-box{width:350px;background:var(--card);padding:30px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.1);text-align:center;}
+  .hidden{display:none !important;}
+  .spin{animation: spin 1s linear infinite;}
+  @keyframes spin { 100% { transform: rotate(360deg); } }
+</style>
+</head>
+<body data-theme="light">
 
-// Ensure directories exist
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
-if (!fs.existsSync(FILES_DIR)) fs.mkdirSync(FILES_DIR);
+<div id="loginOverlay" class="overlay">
+  <div class="login-box">
+    <h2 style="margin-top:0">MyCloudText</h2>
+    <p class="muted" style="margin-bottom:20px">End-to-End Encrypted Notes</p>
+    <input id="pwInput" type="password" placeholder="Encryption Password" style="font-size:1rem;border:1px solid #ccc;border-radius:4px;padding:10px;margin-bottom:15px;">
+    <button onclick="doLogin()" style="width:100%">Unlock Notes</button>
+    <div style="margin-top:15px">
+      <button class="btn-ghost" onclick="doGuest()">Guest Mode</button>
+    </div>
+  </div>
+</div>
 
-// Initialize Database
-const db = new sqlite3.Database(DB_PATH);
-db.serialize(() => {
-  // We store files as a JSON string inside the text column for simplicity in this setup
-  db.run(`
-    CREATE TABLE IF NOT EXISTS notes (
-      id TEXT PRIMARY KEY,
-      title TEXT,
-      created_at TEXT,
-      salt TEXT,
-      iv TEXT,
-      data TEXT,
-      files TEXT
-    )
-  `);
-});
+<header>
+  <div style="font-weight:700;font-size:1.1rem;">mycloudtext</div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <span id="status" class="muted" style="font-size:0.8rem"></span>
+    <select onchange="setTheme(this.value)" style="border:1px solid #ccc;padding:4px;border-radius:4px;font-size:0.8rem">
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
+  </div>
+</header>
 
-const app = express();
-app.use(cors());
-// Increase payload limit to handle the Base64 encrypted files
-app.use(express.json({ limit: "50mb" })); 
-app.use(express.static(__dirname));
+<main>
+  <aside class="sidebar">
+    <div style="padding:15px;border-bottom:1px solid rgba(128,128,128,0.1);display:flex;justify-content:space-between;align-items:center;">
+      <strong>All Notes</strong>
+      <button class="btn-ghost" style="padding:4px 10px;font-size:0.8rem" onclick="initNewNote()">+ New</button>
+    </div>
+    <div id="noteList" class="note-list"></div>
+  </aside>
 
-// --- API ROUTES ---
+  <section class="editor">
+    <div class="toolbar">
+      <div style="flex:1"></div>
+      <input type="file" id="filePicker" multiple style="display:none" onchange="handleFileSelect(this)">
+      <button class="btn-ghost" onclick="document.getElementById('filePicker').click()">📎 Attach</button>
+      <button onclick="saveNote()">Save Changes</button>
+      <button class="btn-danger" onclick="deleteNote()">Delete</button>
+    </div>
 
-// 1. List Notes (Metadata only - lighter payload)
-app.get("/api/notes", (req, res) => {
-  db.all("SELECT id, title, created_at, salt, iv, files FROM notes ORDER BY created_at DESC", [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+    <input id="noteTitle" type="text" placeholder="Note Title...">
+    <textarea id="noteBody" placeholder="Start typing your encrypted note..."></textarea>
     
-    // Parse the files JSON string to return valid objects
-    const notes = rows.map(n => ({
-      ...n,
-      files: n.files ? JSON.parse(n.files) : []
-    }));
-    res.json({ notes });
+    <div class="file-area">
+      <div style="font-size:0.8rem;color:var(--muted);margin-bottom:5px">Attachments</div>
+      <div id="fileList"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* --- 1. Crypto Engine (Web Crypto API) --- */
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+async function deriveKey(password, saltB64) {
+  const salt = Uint8Array.from(atob(saltB64), c => c.charCodeAt(0));
+  const keyMat = await crypto.subtle.importKey("raw", enc.encode(password), {name:"PBKDF2"}, false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    keyMat, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+  );
+}
+
+async function encryptData(dataStr, key) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const buf = enc.encode(dataStr);
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, buf);
+  return { 
+    iv: btoa(String.fromCharCode(...iv)), 
+    data: btoa(String.fromCharCode(...new Uint8Array(ct))) 
+  };
+}
+
+async function decryptData(b64Data, b64Iv, key) {
+  const iv = Uint8Array.from(atob(b64Iv), c => c.charCodeAt(0));
+  const ct = Uint8Array.from(atob(b64Data), c => c.charCodeAt(0));
+  const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct);
+  return dec.decode(pt);
+}
+
+// Helper for files (Binary <-> Base64)
+async function encryptFile(arrayBuf, key) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, arrayBuf);
+  return { 
+    iv: btoa(String.fromCharCode(...iv)), 
+    data: btoa(String.fromCharCode(...new Uint8Array(ct))) 
+  };
+}
+async function decryptFile(b64Data, b64Iv, key) {
+  const iv = Uint8Array.from(atob(b64Iv), c => c.charCodeAt(0));
+  const ct = Uint8Array.from(atob(b64Data), c => c.charCodeAt(0));
+  return crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct);
+}
+
+/* --- 2. App State & Logic --- */
+let STATE = {
+  password: null,
+  notes: [],
+  currentNote: null,
+  pendingFiles: [] // Files waiting to be uploaded
+};
+
+// UI Helpers
+const $ = id => document.getElementById(id);
+const setStatus = msg => $('status').innerText = msg;
+
+// Theme
+if(localStorage.getItem('theme')) setTheme(localStorage.getItem('theme'));
+function setTheme(t) { document.body.setAttribute('data-theme', t); localStorage.setItem('theme', t); }
+
+// Auth
+function doLogin() {
+  const pw = $('pwInput').value;
+  if(!pw) return alert("Password required");
+  STATE.password = pw;
+  $('loginOverlay').classList.add('hidden');
+  loadNotes();
+}
+function doGuest() {
+  STATE.password = "guest-" + Math.random();
+  $('loginOverlay').classList.add('hidden');
+  loadNotes();
+}
+
+// API
+async function loadNotes() {
+  setStatus("Loading...");
+  try {
+    const r = await fetch('/api/notes');
+    const d = await r.json();
+    STATE.notes = d.notes || [];
+    renderList();
+    setStatus("Ready");
+  } catch(e) { setStatus("Error loading notes"); }
+}
+
+function renderList() {
+  const el = $('noteList');
+  el.innerHTML = "";
+  STATE.notes.forEach(n => {
+    const div = document.createElement('div');
+    div.className = `note-item ${STATE.currentNote && STATE.currentNote.id === n.id ? 'active' : ''}`;
+    div.innerHTML = `<strong>${esc(n.title)}</strong><br><small class="muted">${new Date(n.created_at).toLocaleDateString()}</small>`;
+    div.onclick = () => loadFullNote(n.id);
+    el.appendChild(div);
   });
-});
+}
 
-// 2. Get Single Note (Includes heavy encrypted body)
-app.get("/api/notes/:id", (req, res) => {
-  db.get("SELECT * FROM notes WHERE id = ?", [req.params.id], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!row) return res.status(404).json({ error: "Note not found" });
+function initNewNote() {
+  STATE.currentNote = null;
+  STATE.pendingFiles = [];
+  $('noteTitle').value = "";
+  $('noteBody').value = "";
+  $('fileList').innerHTML = "";
+  renderList(); // clears active class
+}
 
-    const filesMeta = row.files ? JSON.parse(row.files) : [];
-    const responseFiles = [];
+async function loadFullNote(id) {
+  setStatus("Downloading & Decrypting...");
+  try {
+    const r = await fetch(`/api/notes/${id}`);
+    const note = await r.json();
+    
+    // Decrypt
+    const key = await deriveKey(STATE.password, note.salt);
+    const body = await decryptData(note.data, note.iv, key); // Body is encrypted JSON {text: "..."}
+    const bodyObj = JSON.parse(body);
 
-    // Attach the actual Base64 file content from disk
-    for (const f of filesMeta) {
-      const filePath = path.join(FILES_DIR, f.path);
-      if (fs.existsSync(filePath)) {
-        try {
-          const buf = fs.readFileSync(filePath);
-          responseFiles.push({
-            filename: f.filename,
-            size: f.size,
-            data: buf.toString("base64"), // Encrypted blob
-            iv: f.iv
-          });
-        } catch (e) {
-          console.error(`Error reading file ${f.path}`, e);
-        }
-      }
-    }
+    STATE.currentNote = note;
+    STATE.currentNote.files = note.files || []; // Store existing files
+    STATE.pendingFiles = []; // Clear pending
 
-    res.json({
-      ...row,
-      files: responseFiles // Send full file data to client
-    });
-  });
-});
-
-// 3. Create or Update Note
-app.post("/api/notes", (req, res) => {
-  const { id, title, salt, iv, data, files } = req.body;
-  
-  if (!title || !salt || !iv || !data) {
-    return res.status(400).json({ error: "Missing required fields" });
+    $('noteTitle').value = note.title;
+    $('noteBody').value = bodyObj.text || "";
+    
+    renderFiles();
+    renderList();
+    setStatus("Decrypted");
+  } catch(e) {
+    console.error(e);
+    alert("Decryption failed. Wrong password?");
+    setStatus("Error");
   }
+}
 
-  // Generate ID if new
-  const noteId = id || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const createdAt = new Date().toISOString();
+function renderFiles() {
+  const el = $('fileList');
+  el.innerHTML = "";
 
-  // 1. Save new uploaded files to disk
-  const newFilesMeta = [];
-  if (Array.isArray(files)) {
-    for (const f of files) {
-      // Basic validation
-      if (!f.data || !f.filename) continue;
+  // 1. Existing Server Files
+  if (STATE.currentNote && STATE.currentNote.files) {
+    STATE.currentNote.files.forEach(f => {
+      const chip = document.createElement('div');
+      chip.className = 'file-chip';
+      chip.innerHTML = `<span>📄 ${esc(f.filename)} <small>(${(f.size/1024).toFixed(0)}KB)</small></span>`;
       
-      const buf = Buffer.from(f.data, "base64");
-      if (buf.length > MAX_FILE_BYTES) {
-        return res.status(400).json({ error: `File ${f.filename} too large` });
-      }
-
-      const safeName = `${noteId}-${Date.now()}-${f.filename.replace(/[^a-z0-9\.\-\_]/gi, '_')}`;
-      fs.writeFileSync(path.join(FILES_DIR, safeName), buf);
-
-      newFilesMeta.push({
-        filename: f.filename,
-        path: safeName,
-        size: buf.length,
-        iv: f.iv
-      });
-    }
+      const btn = document.createElement('button');
+      btn.innerText = "⬇";
+      btn.className = "btn-ghost";
+      btn.style.padding = "2px 6px";
+      btn.onclick = () => downloadFile(f);
+      chip.appendChild(btn);
+      el.appendChild(chip);
+    });
   }
 
-  // 2. Check if note exists to MERGE file lists (Fixes the overwrite bug)
-  db.get("SELECT files FROM notes WHERE id = ?", [noteId], (err, row) => {
-    let finalFileList = newFilesMeta;
-
-    if (row && row.files) {
-      // Note exists: Append new files to existing files
-      const existingFiles = JSON.parse(row.files);
-      finalFileList = [...existingFiles, ...newFilesMeta];
-    }
-
-    const filesJson = JSON.stringify(finalFileList);
-
-    // 3. Upsert (Insert or Replace) into SQLite
-    const stmt = db.prepare(`
-      INSERT INTO notes (id, title, created_at, salt, iv, data, files)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        title=excluded.title,
-        data=excluded.data,
-        iv=excluded.iv,
-        files=excluded.files
-    `);
-
-    stmt.run(noteId, title, createdAt, salt, iv, data, filesJson, function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ ok: true, id: noteId });
-    });
-    stmt.finalize();
+  // 2. Pending Uploads
+  STATE.pendingFiles.forEach(f => {
+    const chip = document.createElement('div');
+    chip.className = 'file-chip';
+    chip.style.border = "1px solid var(--accent)";
+    chip.innerHTML = `<span>📎 ${esc(f.filename)} <small>(Ready to upload)</small></span>`;
+    el.appendChild(chip);
   });
-});
+}
 
-// 4. Delete Note
-app.delete("/api/notes/:id", (req, res) => {
-  const id = req.params.id;
+// File Logic
+async function handleFileSelect(input) {
+  for (const file of input.files) {
+    if (file.size > 10 * 1024 * 1024) { alert(`Skipping ${file.name} (Too big)`); continue; }
+    const buf = await file.arrayBuffer();
+    STATE.pendingFiles.push({ filename: file.name, raw: buf });
+  }
+  renderFiles();
+  input.value = ""; // reset
+}
+
+async function downloadFile(fMeta) {
+  setStatus("Decrypting file...");
+  try {
+    const key = await deriveKey(STATE.password, STATE.currentNote.salt);
+    const decryptedBuf = await decryptFile(fMeta.data, fMeta.iv, key);
+    
+    const blob = new Blob([decryptedBuf]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fMeta.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus("Downloaded");
+  } catch(e) {
+    alert("File decryption failed");
+    setStatus("Error");
+  }
+}
+
+// Save & Delete
+async function saveNote() {
+  const title = $('noteTitle').value.trim() || "Untitled";
+  const bodyText = $('noteBody').value;
+  setStatus("Encrypting & Uploading...");
+
+  // Generate Salt
+  let saltB64;
+  if (STATE.currentNote) {
+    saltB64 = STATE.currentNote.salt;
+  } else {
+    const s = crypto.getRandomValues(new Uint8Array(16));
+    saltB64 = btoa(String.fromCharCode(...s));
+  }
+
+  const key = await deriveKey(STATE.password, saltB64);
+
+  // Encrypt Body
+  const payload = JSON.stringify({ text: bodyText });
+  const encBody = await encryptData(payload, key);
+
+  // Encrypt Pending Files
+  const filesToUpload = [];
+  for (const pf of STATE.pendingFiles) {
+    const encF = await encryptFile(pf.raw, key);
+    filesToUpload.push({
+      filename: pf.filename,
+      data: encF.data,
+      iv: encF.iv
+    });
+  }
+
+  const reqBody = {
+    id: STATE.currentNote ? STATE.currentNote.id : null,
+    title: title,
+    salt: saltB64,
+    iv: encBody.iv,
+    data: encBody.data,
+    files: filesToUpload // Only sending NEW files. Server will merge.
+  };
+
+  try {
+    const r = await fetch('/api/notes', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(reqBody)
+    });
+    const res = await r.json();
+    
+    if (res.ok) {
+      // If success, we reload the note to get the full merged state from server
+      await loadFullNote(res.id);
+      await loadNotes(); // Refresh list
+      setStatus("Saved");
+    } else {
+      alert("Save failed: " + res.error);
+    }
+  } catch(e) {
+    alert("Network error");
+  }
+}
+
+async function deleteNote() {
+  if(!STATE.currentNote) return;
+  if(!confirm("Permanently delete this note?")) return;
   
-  // First get the file paths to clean up disk
-  db.get("SELECT files FROM notes WHERE id = ?", [id], (err, row) => {
-    if (row && row.files) {
-      const files = JSON.parse(row.files);
-      files.forEach(f => {
-        const fp = path.join(FILES_DIR, f.path);
-        if (fs.existsSync(fp)) fs.unlinkSync(fp);
-      });
-    }
+  await fetch(`/api/notes/${STATE.currentNote.id}`, {method:'DELETE'});
+  initNewNote();
+  loadNotes();
+}
 
-    // Now delete from DB
-    db.run("DELETE FROM notes WHERE id = ?", [id], function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ ok: true });
-    });
-  });
-});
-
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Secure Notes running on http://localhost:${port}`));
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+</script>
+</body>
+</html>
