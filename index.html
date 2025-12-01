@@ -4,21 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
 <title>MyCloudText — Secure</title>
-<!-- Tailwind CSS for instant modern styling -->
 <script src="https://cdn.tailwindcss.com"></script>
-<script>
-  tailwind.config = {
-    darkMode: 'class',
-    theme: {
-      extend: {
-        colors: {
-          brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 900: '#1e3a8a' }
-        }
-      }
-    }
-  }
-</script>
-<!-- Font Awesome for Icons -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 <style>
@@ -27,138 +13,116 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
   .dark ::-webkit-scrollbar-thumb { background: #475569; }
-  
-  /* Mobile View Logic */
-  .view-transition { transition: transform 0.3s ease-in-out; }
-  
-  /* Loader */
-  .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+  .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
   @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
   [x-cloak] { display: none !important; }
 </style>
 </head>
-<body class="bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100 h-screen overflow-hidden flex flex-col transition-colors duration-200">
+<body class="bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100 h-screen flex flex-col overflow-hidden">
 
-<!-- TOAST NOTIFICATION CONTAINER -->
+<!-- TOAST CONTAINER -->
 <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-<!-- LOGIN OVERLAY -->
-<div id="login-screen" class="fixed inset-0 z-50 bg-gray-100 dark:bg-gray-950 flex items-center justify-center p-4">
-  <div class="bg-white dark:bg-gray-900 w-full max-w-sm p-8 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 text-center">
-    <div class="mb-6 flex justify-center">
-      <div class="h-16 w-16 bg-brand-100 dark:bg-brand-900 rounded-full flex items-center justify-center text-brand-600 dark:text-brand-100 text-2xl">
-        <i class="fa-solid fa-shield-halved"></i>
-      </div>
+<!-- ADMIN LOGIN MODAL (Hidden by default) -->
+<div id="login-modal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center hidden">
+  <div class="bg-white dark:bg-gray-800 w-full max-w-sm p-6 rounded-2xl shadow-2xl transform transition-all scale-100">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-xl font-bold">Admin Access</h2>
+      <button onclick="closeLogin()" class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-xmark text-xl"></i></button>
     </div>
-    <h1 class="text-2xl font-bold mb-2">Secure Notes</h1>
-    <p class="text-gray-500 dark:text-gray-400 text-sm mb-6">Enter your encryption password to decrypt your cloud vault.</p>
-    
-    <div class="relative mb-4">
-      <input type="password" id="password-input" 
-        class="w-full pl-4 pr-10 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none transition-all"
-        placeholder="Password"
-        onkeyup="if(event.key==='Enter') attemptLogin()"
-      >
-      <i class="fa-solid fa-lock absolute right-4 top-4 text-gray-400"></i>
-    </div>
-    
-    <button onclick="attemptLogin()" id="login-btn" class="w-full bg-brand-600 hover:bg-brand-500 text-white font-semibold py-3 rounded-lg shadow-md transition-all flex justify-center items-center gap-2">
-      <span>Unlock Vault</span>
-    </button>
-    
-    <button onclick="guestLogin()" class="mt-4 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline">
-      New user or Guest? (Create temporary keys)
+    <p class="text-sm text-gray-500 mb-4">Enter the master password to view saved notes.</p>
+    <input type="password" id="admin-password" placeholder="Password" 
+      class="w-full p-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 outline-none"
+      onkeyup="if(event.key==='Enter') attemptAdminLogin()">
+    <button onclick="attemptAdminLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-colors">
+      Unlock Vault
     </button>
   </div>
 </div>
 
-<!-- APP LAYOUT -->
-<div class="flex-1 flex overflow-hidden relative" id="app-container">
-  
-  <!-- SIDEBAR (Note List) -->
-  <!-- On mobile: w-full. On desktop: w-80. Hidden on mobile if viewing note. -->
-  <aside id="sidebar" class="w-full md:w-80 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col z-20 absolute md:relative h-full transition-transform duration-300">
-    
-    <!-- Sidebar Header -->
-    <div class="h-16 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-4 shrink-0">
-      <div class="font-bold text-lg tracking-tight flex items-center gap-2">
-        <i class="fa-solid fa-cloud text-brand-500"></i> MyCloudText
-      </div>
-      <div class="flex gap-2">
-        <button onclick="toggleTheme()" class="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
-          <i class="fa-solid fa-circle-half-stroke"></i>
-        </button>
-        <button onclick="createNote()" class="bg-brand-600 hover:bg-brand-500 text-white px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-all">
-          <i class="fa-solid fa-plus"></i> New
-        </button>
-      </div>
-    </div>
+<!-- HEADER -->
+<header class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 shrink-0 shadow-sm z-20">
+  <div class="font-bold text-lg tracking-tight flex items-center gap-2">
+    <i class="fa-solid fa-cloud text-blue-500"></i> <span class="hidden md:inline">MyCloudText</span>
+    <span id="mode-badge" class="bg-gray-200 dark:bg-gray-700 text-xs px-2 py-1 rounded-full text-gray-500">Guest Mode</span>
+  </div>
+  <div class="flex items-center gap-3">
+    <!-- Admin Toggle -->
+    <button onclick="openLogin()" id="lock-btn" class="p-2 text-gray-400 hover:text-blue-600 transition-colors" title="Admin Login">
+      <i class="fa-solid fa-lock"></i>
+    </button>
+    <!-- Theme Toggle -->
+    <button onclick="toggleTheme()" class="p-2 text-gray-400 hover:text-yellow-500 transition-colors">
+      <i class="fa-solid fa-circle-half-stroke"></i>
+    </button>
+  </div>
+</header>
 
-    <!-- Note List -->
+<div class="flex-1 flex overflow-hidden relative">
+
+  <!-- SIDEBAR (Only visible to Admin) -->
+  <aside id="sidebar" class="w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex-col z-10 hidden md:flex">
+    <div class="p-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
+      <span class="text-xs font-bold text-gray-400 uppercase">Saved Notes</span>
+      <button onclick="refreshNotes()" class="text-gray-400 hover:text-blue-500"><i class="fa-solid fa-rotate-right"></i></button>
+    </div>
     <div id="note-list" class="flex-1 overflow-y-auto p-2 space-y-1">
       <!-- Notes injected here -->
-      <div class="text-center mt-10 text-gray-400 text-sm">Loading notes...</div>
-    </div>
-    
-    <!-- Sidebar Footer -->
-    <div class="p-3 border-t border-gray-200 dark:border-gray-800 text-xs text-center text-gray-400">
-      End-to-End Encrypted • <a href="#" onclick="logout()" class="text-red-400 hover:underline">Lock</a>
+      <div class="text-center mt-10 text-gray-400 text-sm p-4">
+        <i class="fa-solid fa-lock text-2xl mb-2"></i><br>
+        Log in to see notes.
+      </div>
     </div>
   </aside>
 
-  <!-- MAIN EDITOR AREA -->
-  <!-- On mobile: fixed inset-0 z-30 (covers sidebar). Hidden by default on mobile until note selected. -->
-  <main id="editor-view" class="flex-1 bg-gray-50 dark:bg-gray-950 flex flex-col absolute inset-0 md:relative z-30 translate-x-full md:translate-x-0 transition-transform duration-300">
+  <!-- MAIN AREA -->
+  <main class="flex-1 bg-gray-50 dark:bg-gray-900 flex flex-col relative">
     
-    <!-- Toolbar -->
-    <div class="h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-4 shrink-0 shadow-sm">
-      <div class="flex items-center gap-3">
-        <!-- Mobile Back Button -->
-        <button onclick="showSidebar()" class="md:hidden p-2 -ml-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full">
-          <i class="fa-solid fa-arrow-left"></i>
-        </button>
-        <div id="save-status" class="text-xs text-gray-400 font-medium uppercase tracking-wide">Ready</div>
-      </div>
-      
+    <!-- Editor Toolbar -->
+    <div class="h-14 bg-white/50 dark:bg-gray-800/50 backdrop-blur border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 shrink-0">
+      <div class="text-xs text-gray-400 font-medium uppercase tracking-wide" id="status-text">Ready to Write</div>
       <div class="flex items-center gap-2">
         <input type="file" id="file-input" multiple class="hidden" onchange="handleFileSelect(this)">
-        <button onclick="document.getElementById('file-input').click()" class="text-gray-500 hover:text-brand-600 dark:hover:text-brand-400 p-2 rounded-md transition-colors" title="Attach File">
+        <button onclick="document.getElementById('file-input').click()" class="text-gray-500 hover:text-blue-600 p-2 rounded-md transition-colors" title="Attach File">
           <i class="fa-solid fa-paperclip"></i>
         </button>
-        <button onclick="saveNote()" class="text-brand-600 hover:text-brand-700 font-medium px-3 py-1.5 rounded hover:bg-brand-50 dark:hover:bg-gray-800 transition-colors">
-          Save
+        <button onclick="saveNote()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-1.5 rounded shadow-sm hover:shadow transition-all flex items-center gap-2">
+          <span>Save Note</span>
+          <i class="fa-solid fa-paper-plane text-xs"></i>
         </button>
-        <button onclick="deleteNote()" class="text-red-500 hover:text-red-600 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete">
+        <!-- Delete only for Admin -->
+        <button id="delete-btn" onclick="deleteNote()" class="hidden text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-2 rounded ml-1">
           <i class="fa-regular fa-trash-can"></i>
         </button>
       </div>
     </div>
 
-    <!-- Editor Inputs -->
+    <!-- Inputs -->
     <div class="flex-1 overflow-y-auto p-4 md:p-8">
       <div class="max-w-3xl mx-auto h-full flex flex-col">
-        <input id="note-title" type="text" placeholder="Note Title" 
-          class="bg-transparent text-3xl font-bold text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-700 border-none focus:ring-0 p-0 mb-4 w-full">
+        <input id="note-title" type="text" placeholder="Title (Optional)" 
+          class="bg-transparent text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 border-none focus:ring-0 p-0 mb-4 w-full outline-none">
         
-        <textarea id="note-body" placeholder="Start typing..." 
+        <textarea id="note-body" placeholder="Write your note here..." 
           class="flex-1 bg-transparent resize-none text-gray-600 dark:text-gray-300 text-lg leading-relaxed border-none focus:ring-0 p-0 w-full outline-none"></textarea>
         
-        <!-- Attachments Area -->
-        <div id="attachments-area" class="mt-8 pt-4 border-t border-gray-200 dark:border-gray-800">
-          <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Attachments</h4>
+        <!-- Attachments -->
+        <div id="attachments-area" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 min-h-[60px]">
           <div id="file-list" class="flex flex-wrap gap-2"></div>
         </div>
       </div>
     </div>
   </main>
-
 </div>
 
 <script>
-/* -------------------------------------------------------------------------- */
-/* CRYPTO ENGINE                                */
-/* -------------------------------------------------------------------------- */
+/* ---------------- CONFIG ---------------- */
+// To allow Guests to encrypt notes that YOU can read, the app needs to know 
+// the encryption key. We hide the password here so it works automatically.
+// Guests write -> Encrypts with 'letmesee2007' -> Saves -> Only you can Decrypt.
+const SHARED_SECRET = "letmesee2007"; 
+
+/* ---------------- CRYPTO ---------------- */
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -171,18 +135,13 @@ async function deriveKey(password, saltB64) {
   );
 }
 
-// Encrypt string data
 async function encryptData(dataStr, key) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const buf = enc.encode(dataStr);
   const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, buf);
-  return { 
-    iv: btoa(String.fromCharCode(...iv)), 
-    data: btoa(String.fromCharCode(...new Uint8Array(ct))) 
-  };
+  return { iv: btoa(String.fromCharCode(...iv)), data: btoa(String.fromCharCode(...new Uint8Array(ct))) };
 }
 
-// Decrypt string data
 async function decryptData(b64Data, b64Iv, key) {
   const iv = Uint8Array.from(atob(b64Iv), c => c.charCodeAt(0));
   const ct = Uint8Array.from(atob(b64Data), c => c.charCodeAt(0));
@@ -190,194 +149,112 @@ async function decryptData(b64Data, b64Iv, key) {
   return dec.decode(pt);
 }
 
-// Encrypt Binary (Files)
 async function encryptFile(arrayBuf, key) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, arrayBuf);
-  return { 
-    iv: btoa(String.fromCharCode(...iv)), 
-    data: btoa(String.fromCharCode(...new Uint8Array(ct))) 
-  };
+  return { iv: btoa(String.fromCharCode(...iv)), data: btoa(String.fromCharCode(...new Uint8Array(ct))) };
 }
 
-// Decrypt Binary (Files)
 async function decryptFile(b64Data, b64Iv, key) {
   const iv = Uint8Array.from(atob(b64Iv), c => c.charCodeAt(0));
   const ct = Uint8Array.from(atob(b64Data), c => c.charCodeAt(0));
   return crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct);
 }
 
-/* -------------------------------------------------------------------------- */
-/* APP STATE                                   */
-/* -------------------------------------------------------------------------- */
+/* ---------------- STATE ---------------- */
 const STATE = {
-  password: null,
+  isAdmin: false,
   notes: [],
   currentNote: null,
   pendingFiles: []
 };
 
-/* -------------------------------------------------------------------------- */
-/* LOGIN LOGIC                                 */
-/* -------------------------------------------------------------------------- */
+/* ---------------- AUTH & UI LOGIC ---------------- */
+function openLogin() { document.getElementById('login-modal').classList.remove('hidden'); document.getElementById('admin-password').focus(); }
+function closeLogin() { document.getElementById('login-modal').classList.add('hidden'); }
 
-async function attemptLogin() {
-  const pw = document.getElementById('password-input').value;
-  const btn = document.getElementById('login-btn');
-  
-  if (!pw) return showToast('Please enter a password', 'error');
-
-  // UI Loading State
-  const originalText = btn.innerHTML;
-  btn.innerHTML = `<div class="loader mr-2"></div> Verifying...`;
-  btn.disabled = true;
-
-  try {
-    // 1. Fetch the notes list
-    const r = await fetch('/api/notes');
-    const d = await r.json();
-    const notes = d.notes || [];
-
-    // 2. Verification Step (The "Wrong Password" Logic)
-    if (notes.length > 0) {
-      // Pick the most recent note and try to decrypt it
-      // Note: We need to fetch the FULL note to get the 'data' field to test decryption
-      const latestNoteMeta = notes[0];
-      const r2 = await fetch(`/api/notes/${latestNoteMeta.id}`);
-      if (!r2.ok) throw new Error("Network error");
-      const fullNote = await r2.json();
-
-      // Attempt Decrypt
-      try {
-        const key = await deriveKey(pw, fullNote.salt);
-        await decryptData(fullNote.data, fullNote.iv, key);
-        // If we got here, password is CORRECT
-      } catch (e) {
-        // Decryption failed = Wrong Password
-        throw new Error("WRONG_PASSWORD");
-      }
-    }
-
-    // 3. Success
-    STATE.password = pw;
-    STATE.notes = notes;
-    document.getElementById('login-screen').classList.add('hidden');
-    renderList();
-    
-    // On mobile, ensure we start on sidebar
-    showSidebar();
-
-  } catch (err) {
-    console.error(err);
-    if (err.message === "WRONG_PASSWORD") {
-      showToast("Incorrect Password. Decryption failed.", "error");
-      document.getElementById('password-input').value = "";
-      document.getElementById('password-input').focus();
-    } else {
-      showToast("Server connection failed.", "error");
-    }
-  } finally {
-    // Reset Button
-    btn.innerHTML = originalText;
-    btn.disabled = false;
+function attemptAdminLogin() {
+  const input = document.getElementById('admin-password').value;
+  if (input === SHARED_SECRET) {
+    STATE.isAdmin = true;
+    closeLogin();
+    enableAdminMode();
+    showToast("Welcome back, Admin!", "success");
+  } else {
+    showToast("Wrong Password!", "error");
+    document.getElementById('admin-password').value = "";
   }
 }
 
-function guestLogin() {
-  if(!confirm("Guest Mode: Data saved now will be encrypted with a temporary password. If you refresh, you lose access unless you remember the random password generated.")) return;
-  STATE.password = "guest-" + Math.random().toString(36).substring(7);
-  alert("Your temporary password is: " + STATE.password);
-  document.getElementById('login-screen').classList.add('hidden');
+function enableAdminMode() {
+  document.getElementById('mode-badge').innerText = "Admin Mode";
+  document.getElementById('mode-badge').className = "bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full";
+  document.getElementById('lock-btn').classList.add('hidden'); // Hide lock
+  document.getElementById('delete-btn').classList.remove('hidden'); // Show delete
+  
+  // Show Sidebar
+  const sidebar = document.getElementById('sidebar');
+  sidebar.classList.remove('hidden');
+  
   refreshNotes();
 }
 
-function logout() {
-  location.reload();
-}
-
-/* -------------------------------------------------------------------------- */
-/* UI LOGIC                                    */
-/* -------------------------------------------------------------------------- */
-
-// Mobile View Switching
-function showSidebar() {
-  document.getElementById('editor-view').classList.remove('translate-x-0');
-  document.getElementById('editor-view').classList.add('translate-x-full'); // Push editor right
-  
-  // Highlight nothing
-  document.querySelectorAll('.note-item').forEach(el => el.classList.remove('bg-brand-50', 'dark:bg-brand-900/20', 'border-l-4', 'border-brand-500'));
+function resetEditor() {
   STATE.currentNote = null;
+  STATE.pendingFiles = [];
+  document.getElementById('note-title').value = "";
+  document.getElementById('note-body').value = "";
+  renderFiles();
+  document.getElementById('status-text').innerText = "New Note";
 }
 
-function showEditor() {
-  document.getElementById('editor-view').classList.remove('translate-x-full');
-  document.getElementById('editor-view').classList.add('translate-x-0'); // Slide editor in
+/* ---------------- NOTES LOGIC ---------------- */
+
+// 1. Refresh List (Admin Only)
+async function refreshNotes() {
+  if (!STATE.isAdmin) return;
+  document.getElementById('note-list').innerHTML = `<div class="text-center mt-10"><div class="loader mx-auto"></div></div>`;
+  
+  try {
+    const r = await fetch('/api/notes');
+    const d = await r.json();
+    STATE.notes = d.notes || [];
+    renderNoteList();
+  } catch(e) { showToast("Failed to load notes", "error"); }
 }
 
-// Rendering
-function renderList() {
+function renderNoteList() {
   const el = document.getElementById('note-list');
   el.innerHTML = "";
-  
   if (STATE.notes.length === 0) {
-    el.innerHTML = `<div class="text-center mt-10 text-gray-400 p-4">
-      <i class="fa-regular fa-folder-open text-3xl mb-2"></i><br>No notes yet.<br>Click "New" to start.
-    </div>`;
+    el.innerHTML = `<div class="text-center mt-10 text-gray-400 text-sm">No notes found.</div>`;
     return;
   }
-
+  
   STATE.notes.forEach(n => {
     const div = document.createElement('div');
-    // Active state styling logic handled in loadNote
-    div.id = `note-${n.id}`;
-    div.className = "note-item p-3 border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group";
-    
-    const dateStr = new Date(n.created_at).toLocaleDateString(undefined, {month:'short', day:'numeric'});
-    const fileIcon = n.files && n.files.length ? `<i class="fa-solid fa-paperclip text-xs text-gray-400 ml-1"></i>` : '';
-    
+    const dateStr = new Date(n.created_at).toLocaleDateString();
+    div.className = "p-3 border-b border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors";
     div.innerHTML = `
-      <div class="flex justify-between items-start mb-1">
-        <h3 class="font-semibold text-gray-800 dark:text-gray-200 truncate pr-2 text-sm">${escapeHtml(n.title)}</h3>
-        <span class="text-[10px] text-gray-400 shrink-0 mt-0.5">${dateStr}</span>
-      </div>
-      <div class="text-xs text-gray-400 flex items-center">
-        Encrypted Text ${fileIcon}
-      </div>
+      <div class="font-semibold text-sm truncate text-gray-800 dark:text-gray-200">${escapeHtml(n.title||"Untitled")}</div>
+      <div class="text-xs text-gray-400">${dateStr}</div>
     `;
     div.onclick = () => loadNote(n.id);
     el.appendChild(div);
   });
 }
 
-function createNote() {
-  STATE.currentNote = null;
-  STATE.pendingFiles = [];
-  document.getElementById('note-title').value = "";
-  document.getElementById('note-body').value = "";
-  document.getElementById('file-list').innerHTML = "";
-  
-  // Switch to editor view
-  showEditor();
-  document.getElementById('note-title').focus();
-  document.getElementById('save-status').innerText = "New Unsaved Note";
-}
-
+// 2. Load Note (Admin Only)
 async function loadNote(id) {
-  // UI Highlight
-  document.querySelectorAll('.note-item').forEach(el => 
-    el.className = "note-item p-3 border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-  );
-  const activeEl = document.getElementById(`note-${id}`);
-  if(activeEl) activeEl.className = "note-item p-3 border-b border-gray-100 dark:border-gray-800 cursor-pointer bg-brand-50 dark:bg-brand-900/20 border-l-4 border-brand-500 transition-colors";
-
-  showEditor();
-  document.getElementById('save-status').innerText = "Decrypting...";
-
+  if(!STATE.isAdmin) return;
+  document.getElementById('status-text').innerText = "Decrypting...";
+  
   try {
     const r = await fetch(`/api/notes/${id}`);
     const note = await r.json();
 
-    const key = await deriveKey(STATE.password, note.salt);
+    // Decrypt using SHARED_SECRET
+    const key = await deriveKey(SHARED_SECRET, note.salt);
     const bodyStr = await decryptData(note.data, note.iv, key);
     const bodyObj = JSON.parse(bodyStr);
 
@@ -387,119 +264,47 @@ async function loadNote(id) {
 
     document.getElementById('note-title').value = note.title;
     document.getElementById('note-body').value = bodyObj.text || "";
-    
     renderFiles();
-    document.getElementById('save-status').innerText = "Last saved: " + new Date(note.created_at).toLocaleTimeString();
-
-  } catch (e) {
-    console.error(e);
-    showToast("Decryption Failed", "error");
-    document.getElementById('save-status').innerText = "Error";
-  }
-}
-
-// File Rendering
-function renderFiles() {
-  const el = document.getElementById('file-list');
-  el.innerHTML = "";
-
-  // Helper to make chips
-  const createChip = (name, size, isPending, onClick) => {
-    const div = document.createElement('div');
-    div.className = `flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${isPending ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-gray-100 border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'}`;
-    div.innerHTML = `
-      <i class="fa-solid ${isPending ? 'fa-upload' : 'fa-file'}"></i>
-      <span class="max-w-[150px] truncate">${escapeHtml(name)}</span>
-      <span class="opacity-60">(${formatBytes(size)})</span>
-    `;
-    if(!isPending) {
-      const btn = document.createElement('button');
-      btn.className = "ml-1 hover:text-brand-600";
-      btn.innerHTML = `<i class="fa-solid fa-download"></i>`;
-      btn.onclick = onClick;
-      div.appendChild(btn);
-    }
-    el.appendChild(div);
-  };
-
-  // 1. Server files
-  if (STATE.currentNote && STATE.currentNote.files) {
-    STATE.currentNote.files.forEach(f => {
-      createChip(f.filename, f.size, false, () => downloadFile(f));
-    });
-  }
-  // 2. Pending files
-  STATE.pendingFiles.forEach(f => {
-    createChip(f.filename, f.raw.byteLength, true, null);
-  });
-}
-
-function handleFileSelect(input) {
-  Array.from(input.files).forEach(async file => {
-    if(file.size > 10 * 1024 * 1024) return showToast(`${file.name} too large (Max 10MB)`, "error");
-    const buf = await file.arrayBuffer();
-    STATE.pendingFiles.push({ filename: file.name, raw: buf });
-    renderFiles();
-  });
-  input.value = "";
-}
-
-async function downloadFile(fMeta) {
-  const toastId = showToast("Decrypting download...", "info");
-  try {
-    const key = await deriveKey(STATE.password, STATE.currentNote.salt);
-    const decryptedBuf = await decryptFile(fMeta.data, fMeta.iv, key);
-    
-    const blob = new Blob([decryptedBuf]);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fMeta.filename;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    // Remove toast logic here would be complex, just let it fade
+    document.getElementById('status-text').innerText = "Editing: " + (note.title || "Untitled");
   } catch(e) {
-    showToast("Download failed", "error");
+    console.error(e);
+    showToast("Decryption Error", "error");
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* SAVE / DELETE                               */
-/* -------------------------------------------------------------------------- */
-
+// 3. Save Note (Guests & Admin)
 async function saveNote() {
-  const title = document.getElementById('note-title').value.trim();
+  const title = document.getElementById('note-title').value.trim() || "Untitled";
   const body = document.getElementById('note-body').value;
   
-  if(!title) return showToast("Title is required", "error");
-
-  document.getElementById('save-status').innerText = "Encrypting...";
+  // Visual Feedback
+  const saveBtn = document.querySelector('button[onclick="saveNote()"]');
+  const originalHtml = saveBtn.innerHTML;
+  saveBtn.innerHTML = `<div class="loader border-t-white w-4 h-4"></div> Saving...`;
+  saveBtn.disabled = true;
 
   try {
-    // 1. Prepare Key
-    let saltB64;
-    if (STATE.currentNote) saltB64 = STATE.currentNote.salt;
-    else {
-      const s = crypto.getRandomValues(new Uint8Array(16));
-      saltB64 = btoa(String.fromCharCode(...s));
-    }
-    const key = await deriveKey(STATE.password, saltB64);
-
-    // 2. Encrypt Content
+    // ALWAYS encrypt with SHARED_SECRET so Admin can read it
+    const s = crypto.getRandomValues(new Uint8Array(16));
+    const saltB64 = btoa(String.fromCharCode(...s));
+    
+    // Note: If editing existing, we could reuse salt, but generating new is safer/easier
+    // However, if we are Guest, we just make a new note.
+    const key = await deriveKey(SHARED_SECRET, saltB64);
+    
+    // Encrypt Body
     const contentPayload = JSON.stringify({ text: body });
     const encContent = await encryptData(contentPayload, key);
 
-    // 3. Encrypt New Files
+    // Encrypt Files
     const filesToUpload = [];
     for (const pf of STATE.pendingFiles) {
       const encF = await encryptFile(pf.raw, key);
       filesToUpload.push({ filename: pf.filename, data: encF.data, iv: encF.iv });
     }
 
-    // 4. Send
     const reqBody = {
-      id: STATE.currentNote ? STATE.currentNote.id : null,
+      id: STATE.currentNote ? STATE.currentNote.id : null, // Only admin sets ID (editing)
       title: title,
       salt: saltB64,
       iv: encContent.iv,
@@ -512,109 +317,100 @@ async function saveNote() {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(reqBody)
     });
-    
     const res = await r.json();
-    if(res.ok) {
-      showToast("Note Saved Securely", "success");
-      refreshNotes(); // Refresh list to update titles/timestamps
-      // If it was new, switch context to existing
-      if(!STATE.currentNote) {
-        await loadNote(res.id); // Reload to get server state
+
+    if (res.ok) {
+      showToast("Note Saved Securely!", "success");
+      if (STATE.isAdmin) {
+        refreshNotes(); // Update list
       } else {
-        // Just clear pending files locally
-        STATE.pendingFiles = [];
-        renderFiles();
-        document.getElementById('save-status').innerText = "Saved";
+        // Guest: Reset form completely so they can write another
+        resetEditor();
       }
     } else {
       throw new Error(res.error);
     }
   } catch(e) {
-    console.error(e);
     showToast("Save Failed: " + e.message, "error");
-    document.getElementById('save-status').innerText = "Save Error";
+  } finally {
+    saveBtn.innerHTML = originalHtml;
+    saveBtn.disabled = false;
   }
 }
 
+// 4. Delete (Admin Only)
 async function deleteNote() {
-  if (!STATE.currentNote) return;
-  if (!confirm("Permanently delete this note? This cannot be undone.")) return;
+  if (!STATE.currentNote || !STATE.isAdmin) return;
+  if (!confirm("Permanently delete this note?")) return;
+  await fetch(`/api/notes/${STATE.currentNote.id}`, {method:'DELETE'});
+  resetEditor();
+  refreshNotes();
+  showToast("Deleted", "info");
+}
+
+/* ---------------- FILES LOGIC ---------------- */
+function renderFiles() {
+  const el = document.getElementById('file-list');
+  el.innerHTML = "";
   
-  try {
-    await fetch(`/api/notes/${STATE.currentNote.id}`, {method:'DELETE'});
-    showToast("Note Deleted", "info");
-    createNote();
-    refreshNotes();
-    // On mobile go back
-    if(window.innerWidth < 768) showSidebar();
-  } catch(e) {
-    showToast("Delete Failed", "error");
-  }
-}
-
-async function refreshNotes() {
-  const r = await fetch('/api/notes');
-  const d = await r.json();
-  STATE.notes = d.notes || [];
-  renderList();
-}
-
-/* -------------------------------------------------------------------------- */
-/* UTILS                                       */
-/* -------------------------------------------------------------------------- */
-
-function toggleTheme() {
-  const body = document.body;
-  if (body.classList.contains('dark')) {
-    body.classList.remove('dark');
-    localStorage.setItem('theme', 'light');
-  } else {
-    body.classList.add('dark');
-    localStorage.setItem('theme', 'dark');
-  }
-}
-// Init theme
-if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark');
-
-function formatBytes(bytes, decimals = 1) {
-  if (!+bytes) return '0 B';
-  const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
-}
-
-function escapeHtml(text) {
-  if (!text) return text;
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-}
-
-function showToast(msg, type = 'info') {
-  const container = document.getElementById('toast-container');
-  const el = document.createElement('div');
-  
-  const colors = {
-    info: 'bg-gray-800 text-white',
-    error: 'bg-red-600 text-white',
-    success: 'bg-green-600 text-white'
+  // Helper
+  const mkChip = (name, size, isPending, onClick) => {
+    const d = document.createElement('div');
+    d.className = `flex items-center gap-2 px-3 py-1 text-xs rounded-full border ${isPending?'bg-blue-50 border-blue-200 text-blue-700':'bg-gray-100 dark:bg-gray-700 dark:border-gray-600'}`;
+    d.innerHTML = `<i class="fa-solid ${isPending?'fa-upload':'fa-file'}"></i> <span class="truncate max-w-[150px]">${escapeHtml(name)}</span>`;
+    if (!isPending && STATE.isAdmin) {
+      const b = document.createElement('button');
+      b.className="ml-1 hover:text-blue-500";
+      b.innerHTML='<i class="fa-solid fa-download"></i>';
+      b.onclick=onClick;
+      d.appendChild(b);
+    }
+    el.appendChild(d);
   };
-  
-  el.className = `${colors[type]} px-4 py-3 rounded shadow-lg text-sm font-medium transition-all duration-300 transform translate-x-full pointer-events-auto flex items-center gap-2`;
-  el.innerHTML = `<span>${msg}</span>`;
-  
-  container.appendChild(el);
-  
-  // Animate in
-  setTimeout(() => el.classList.remove('translate-x-full'), 10);
-  
-  // Remove after 3s
-  setTimeout(() => {
-    el.classList.add('opacity-0', 'translate-y-2');
-    setTimeout(() => el.remove(), 300);
-  }, 3000);
+
+  if (STATE.currentNote && STATE.currentNote.files) {
+    STATE.currentNote.files.forEach(f => mkChip(f.filename, f.size, false, () => downloadFile(f)));
+  }
+  STATE.pendingFiles.forEach(f => mkChip(f.filename, f.raw.byteLength, true));
 }
+
+function handleFileSelect(input) {
+  Array.from(input.files).forEach(async f => {
+    if(f.size > 10*1024*1024) return showToast("File too large (>10MB)", "error");
+    const buf = await f.arrayBuffer();
+    STATE.pendingFiles.push({ filename: f.name, raw: buf });
+    renderFiles();
+  });
+  input.value = "";
+}
+
+async function downloadFile(fMeta) {
+  if (!STATE.isAdmin) return;
+  try {
+    const key = await deriveKey(SHARED_SECRET, STATE.currentNote.salt);
+    const buf = await decryptFile(fMeta.data, fMeta.iv, key);
+    const url = URL.createObjectURL(new Blob([buf]));
+    const a = document.createElement('a'); a.href=url; a.download=fMeta.filename; a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) { showToast("Download error", "error"); }
+}
+
+/* ---------------- UTILS ---------------- */
+function showToast(msg, type='info') {
+  const d = document.createElement('div');
+  const c = type==='error'?'bg-red-500 text-white':type==='success'?'bg-green-500 text-white':'bg-gray-800 text-white';
+  d.className = `${c} px-4 py-3 rounded shadow-lg text-sm transition-all transform translate-x-full mb-2`;
+  d.innerText = msg;
+  document.getElementById('toast-container').appendChild(d);
+  requestAnimationFrame(()=>d.classList.remove('translate-x-full'));
+  setTimeout(()=>{ d.classList.add('opacity-0'); setTimeout(()=>d.remove(),300) }, 3000);
+}
+
+function toggleTheme() { document.body.classList.toggle('dark'); }
+function escapeHtml(s) { return s?s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"):s; }
+
 </script>
 </body>
 </html>
+
 
